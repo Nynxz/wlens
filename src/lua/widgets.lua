@@ -250,35 +250,52 @@ W.slot_nodes = {}   -- name -> containers in the current UI (reset per theme)
 -- hidden along with it.
 function W.slot(name, o, outer)
   local el = E({ gap = 8, align = "center" }, o or {})
+  local fixed = #el
   local added = W.slot_widgets[name] or {}
   for _, wdg in ipairs(added) do el[#el + 1] = wdg end
   local top = outer and E(outer, { el }) or el
   top.id = top.id or ("slot_" .. name) -- `ui toggle slot_right` hides a sidebar
+  local show = top.show
   if #el == 0 then top.show = "never" end
   W.slot_nodes[name] = W.slot_nodes[name] or {}
-  table.insert(W.slot_nodes[name], { el = el, top = top })
+  table.insert(W.slot_nodes[name], { el = el, top = top, fixed = fixed, show = show })
   return top
+end
+
+-- Apply additions to every occurrence of a slot. A failed layout parse
+-- leaves both the mounted slots and the next theme's additions intact.
+local function set_slot_widgets(name, widgets)
+  local slots = W.slot_nodes[name] or {}
+  local function fill(added)
+    for _, s in ipairs(slots) do
+      for i = #s.el, s.fixed + 1, -1 do s.el[i] = nil end
+      for _, widget in ipairs(added or {}) do s.el[#s.el + 1] = widget end
+      s.top.show = s.show
+      if #s.el == 0 then s.top.show = "never" end
+    end
+  end
+  fill(widgets)
+  if #slots > 0 and wlens._ui_spec then
+    local ok, err = pcall(wlens.ui, wlens._ui_spec)
+    if not ok then
+      fill(W.slot_widgets[name])
+      error(err, 2)
+    end
+  end
+  W.slot_widgets[name] = widgets
 end
 
 -- Add a widget to a slot (any theme that has it shows it).
 function wlens.slot(name, widget)
-  W.slot_widgets[name] = W.slot_widgets[name] or {}
-  table.insert(W.slot_widgets[name], widget)
-  for _, s in ipairs(W.slot_nodes[name] or {}) do
-    s.el[#s.el + 1] = widget
-    if s.top.show == "never" then s.top.show = nil end
-  end
-  if wlens._ui_spec then wlens.ui(wlens._ui_spec) end
+  assert(widget ~= nil, "slot widget is required")
+  local added = E(W.slot_widgets[name] or {}, {})
+  added[#added + 1] = widget
+  set_slot_widgets(name, added)
 end
 
 -- Remove everything scripts added to a slot.
 function wlens.clear_slot(name)
-  W.slot_widgets[name] = nil
-  for _, s in ipairs(W.slot_nodes[name] or {}) do
-    for i = #s.el, 1, -1 do s.el[i] = nil end
-    s.top.show = "never"
-  end
-  if wlens._ui_spec then wlens.ui(wlens._ui_spec) end
+  if W.slot_widgets[name] then set_slot_widgets(name, nil) end
 end
 
 -- The window's regions around the main view. Each side takes an element or

@@ -121,8 +121,8 @@ end
 do
   local set_ui = wlens.ui
   function wlens.ui(spec)
+    set_ui(spec)
     wlens._ui_spec = spec
-    return set_ui(spec)
   end
 end
 
