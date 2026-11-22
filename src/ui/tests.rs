@@ -493,12 +493,21 @@ fn settings_dialog() -> (crate::lua::Script, Ui) {
 }
 
 fn settings_frame(ui: &mut Ui, dt: f32) {
+    settings_frame_at(ui, dt, 900.0, 700.0, 1.0);
+}
+
+fn settings_frame_at(ui: &mut Ui, dt: f32, width: f64, height: f64, scale: f32) {
     let theme = Theme::default();
     ui.refresh(&str::to_owned, &LuaValue::Nil);
     ui.animate(dt, &theme, None, false);
-    ui.layout(Rect::new(0.0, 0.0, 900.0, 700.0), 1.0, &theme, &mut Fixed);
+    ui.layout(
+        Rect::new(0.0, 0.0, width * scale as f64, height * scale as f64),
+        scale,
+        &theme,
+        &mut Fixed,
+    );
     ui.draw(
-        1.0,
+        scale,
         &theme,
         &mut Vec::new(),
         &mut Vec::new(),
@@ -604,4 +613,49 @@ fn padded_settings_panel_scrolls_to_its_last_control() {
     let last = ui.nodes[panel].children[1];
     assert_eq!(ui.nodes[panel].scroll_y, 18.0);
     assert_eq!(ui.hit((50.0, 89.0)).clickable, Some(last));
+}
+
+#[test]
+fn settings_reflow_on_resize_keeps_choices_and_tabs_reachable() {
+    let (script, mut ui) = settings_dialog();
+    let panel = ui.nodes[ui.roots[0]].children[0];
+    let button = |ui: &Ui, name: &str| {
+        ui.nodes
+            .iter()
+            .position(|n| n.text_value == name && n.on_click.is_some())
+            .unwrap()
+    };
+    let width_button = button(&ui, "Width");
+    let shrink_button = button(&ui, "Shrink");
+    let video_tab = button(&ui, "Video");
+    let view_tab = button(&ui, "View");
+    for (width, scale) in [(320.0, 1.0), (180.0, 1.5), (900.0, 1.0)] {
+        settings_frame_at(&mut ui, 1.0, width, 800.0, scale);
+        let bounds = ui.nodes[panel].rect;
+        assert_eq!(bounds.w, width.min(520.0) * scale as f64);
+        for n in ui
+            .nodes
+            .iter()
+            .filter(|n| n.on_click.is_some() && n.rect.w > 0.0 && !n.layer_top)
+        {
+            assert!(n.rect.x >= bounds.x && n.rect.x + n.rect.w <= bounds.x + bounds.w);
+        }
+        if width == 180.0 {
+            assert!(ui.nodes[width_button].rect.y > ui.nodes[shrink_button].rect.y);
+            assert!(ui.nodes[video_tab].rect.y > ui.nodes[view_tab].rect.y);
+        }
+        let width_pos = ui.nodes[width_button].rect.center();
+        settings_click(&script, &ui, width_pos, width_button);
+        let view_pos = ui.nodes[view_tab].rect.center();
+        settings_click(&script, &ui, ui.nodes[video_tab].rect.center(), video_tab);
+        settings_frame_at(&mut ui, 1.0, width, 800.0, scale);
+        settings_click(&script, &ui, view_pos, view_tab);
+        settings_frame_at(&mut ui, 1.0, width, 800.0, scale);
+        assert_eq!(ui.nodes[width_button].rect.center(), width_pos);
+    }
+    settings_frame_at(&mut ui, 1.0, 200.0, 240.0, 1.0);
+    let zoom = button(&ui, "Zoom");
+    assert!(ui.scroll_at((100.0, 120.0), -10000.0));
+    settings_frame_at(&mut ui, 1.0, 200.0, 240.0, 1.0);
+    settings_click(&script, &ui, ui.nodes[zoom].rect.center(), zoom);
 }

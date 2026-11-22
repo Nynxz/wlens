@@ -248,6 +248,7 @@ impl Ui {
                     LuaValue::Table(t) => selected = Some(t),
                     _ => return Err(err("'selected' must be a table with a 'when' function")),
                 },
+                "responsive" => n.responsive = matches!(v, LuaValue::Boolean(true)),
                 "stack" => n.stack = matches!(v, LuaValue::Boolean(true)),
                 "text" => {
                     n.text = Some(match v {
@@ -552,6 +553,8 @@ impl Node {
             floating: false,
             wrap: false,
             stack: false,
+            responsive: false,
+            layout_width: None,
             scroll: false,
             max_height: None,
             shrink: false,

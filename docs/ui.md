@@ -184,6 +184,7 @@ tick()
 | `input` | A text field: `{ placeholder, on_submit, on_change }` (functions of the text, or command templates with `{value}`). Needs an `id`; the text is `wlens.input(id)`. Click or `ui focus ID` to type; Enter submits, Escape leaves, Ctrl+U clears, Ctrl+Backspace deletes a word |
 | `attach`, `attach_align` | `"element id"`: placed against that element — above it if there's room, else below — like a dropdown on its button (`w.menu` attaches to its `menu_button`). Centred over it by default; `attach_align = "start"` / `"end"` lines it up with an edge. Always kept inside the window |
 | `wrap` | A row whose children flow onto new lines when they don't fit (give the row a px `width`) — e.g. tag chips |
+| `responsive` | Fit a root or floating panel to its available width. Its contents are measured at that width so wrapping rows can grow vertically. |
 | `stack` | Overlay children in one box sized to the largest child, including hidden pages. Use `show` to select a page. |
 | `scroll` | Content taller than the box scrolls with the mouse wheel and is clipped to it (the sidebar kit's body uses it) |
 | `max_height` | Cap on the height (px or `%`): an auto-height panel grows with its content but stops at the space available |

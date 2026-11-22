@@ -1009,7 +1009,7 @@ end
 --   W.choice("fit", { { "Shrink", "shrink" }, { "Contain", "contain" } })
 function W.choice(key, options, o)
   local st = W.style
-  local row = { dir = "row", gap = 2, padding = 2, radius = st.button_radius,
+  local row = { dir = "row", wrap = true, gap = 2, padding = 2, radius = st.button_radius,
                 background = wlens.color(st.fg, 0.07) }
   for _, opt in ipairs(options) do
     local label, value = opt[1], opt[2]
@@ -1047,8 +1047,8 @@ function W.setting(label, control, hint)
   local st = W.style
   local left = { dir = "column", gap = 2, align = "start", grow = true,
                  { text = label, color = st.fg, text_align = "left" } }
-  if hint then left[#left + 1] = { text = hint, color = st.dim, font_size = 12, text_align = "left" } end
-  return { dir = "row", width = "100%", gap = 16, padding = { 6, 0 }, left, control }
+  if hint then left[#left + 1] = { text = hint, tooltip = hint, color = st.dim, font_size = 12, text_align = "left" } end
+  return { dir = "row", wrap = true, width = "100%", gap = 16, padding = { 6, 0 }, left, control }
 end
 
 -- The settings dialog: tabs of settings rows. `tabs` is a list of
@@ -1089,7 +1089,7 @@ function W.settings(o)
   local st = W.style
   local tabs = o.tabs or W.default_settings_tabs()
   local current = 1
-  local tabbar = { dir = "row", gap = 4, width = "100%" }
+  local tabbar = { dir = "row", wrap = true, gap = 4, width = "100%" }
   local pages = { stack = true, width = "100%" }
   for i, tab in ipairs(tabs) do
     local function active() return current == i end
@@ -1105,7 +1105,7 @@ function W.settings(o)
     pages[#pages + 1] = page
   end
   local panel = {
-    dir = "column", gap = 14, padding = { 18, 22 }, width = o.width or 520, align = "start", max_height = "100%", scroll = true,
+    dir = "column", gap = 14, padding = { 18, 22 }, width = o.width or 520, responsive = true, align = "start", max_height = "100%", scroll = true,
     background = st.panel, radius = st.radius + 4,
     border = { width = 1, color = st.panel_border },
     shadow = { size = 30, color = "#000000aa", y = 10 },

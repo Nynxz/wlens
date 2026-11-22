@@ -271,6 +271,10 @@ pub struct Node {
     pub wrap: bool,
     /// Overlay children in a box sized to the largest page, including hidden ones.
     stack: bool,
+    /// Fit this floating panel and its contents to the available width.
+    responsive: bool,
+    /// Physical width resolved during the panel's width-constrained measurement.
+    layout_width: Option<f32>,
     /// Content taller than the box scrolls (mouse wheel) and is clipped.
     pub scroll: bool,
     /// Cap on the height (px or %), for auto-height panels that should
