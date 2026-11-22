@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/Nynxz/wlens/actions/workflows/ci.yml"><img src="https://github.com/Nynxz/wlens/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://aur.archlinux.org/packages/wlens"><img src="https://img.shields.io/aur/version/wlens" alt="AUR version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
 </p>
 
@@ -56,6 +57,9 @@ a folder browser.
 wlens needs Rust 1.96 or newer, and GStreamer with gst-plugins-base for
 video. To build without video, add `--no-default-features`. It's developed and
 tested on Hyprland, and should work on any Wayland compositor.
+
+On Arch, install [`wlens` from the AUR](https://aur.archlinux.org/packages/wlens)
+(e.g. `paru -S wlens`). Elsewhere, build it with Cargo:
 
 ```sh
 cargo install --git https://github.com/Nynxz/wlens   # or, in a clone: cargo install --path .
