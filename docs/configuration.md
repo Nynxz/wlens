@@ -77,7 +77,8 @@ keys match the character typed, so `N` already means Shift+n.
 `DoubleClick`, `RightClick`, `MiddleClick`, `MouseBack`, `MouseForward` (the
 side buttons; `MouseBack` goes back by default). Left drag moves the image.
 Holding the middle button pans a zoomed image to the pointer's position in
-the viewport. With a custom `MiddleClick` binding, a click runs the binding
+the viewport. Where the image fits, pressing the middle button places its center
+at the pointer, within the limits of the `pan` setting. With a custom `MiddleClick` binding, a click runs the binding
 on release and a drag starts panning once the pointer moves past the click threshold.
 
 **Modes:** a binding with a 4th argument (`"image"`, `"video"` or

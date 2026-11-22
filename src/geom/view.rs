@@ -127,22 +127,28 @@ impl View {
 
     /// Map the inner 80% of the viewport to the whole image's pan range.
     pub fn pan_to_pointer(&mut self, point: (f64, f64), img: (u32, u32), vp: Rect) {
-        let (w, h) = self.rotated_size(img);
-        let overflow = (
-            (w * self.zoom - vp.w).max(0.0),
-            (h * self.zoom - vp.h).max(0.0),
-        );
-        if vp.w <= 0.0 || vp.h <= 0.0 || overflow == (0.0, 0.0) {
+        if vp.w <= 0.0 || vp.h <= 0.0 {
             return;
         }
+        let before = self.offset;
+        let (w, h) = self.rotated_size(img);
         let (cx, cy) = vp.center();
-        let axis =
-            |delta: f64, span: f64, excess: f64| (-delta / (0.8 * span)).clamp(-0.5, 0.5) * excess;
+        let axis = |from_center: f64, span: f64, size: f64| {
+            if size > span {
+                (-from_center / (0.8 * span)).clamp(-0.5, 0.5) * (size - span)
+            } else {
+                // Position the image centre at the pointer, within the configured pan limits.
+                from_center
+            }
+        };
         self.offset = (
-            axis(point.0 - cx, vp.w, overflow.0),
-            axis(point.1 - cy, vp.h, overflow.1),
+            axis(point.0 - cx, vp.w, w * self.zoom),
+            axis(point.1 - cy, vp.h, h * self.zoom),
         );
-        self.fitted = false;
+        self.clamp(img, vp);
+        if self.offset != before {
+            self.fitted = false;
+        }
     }
 
     /// Limit the offset according to `self.pan`. On axes where the image is
@@ -304,11 +310,32 @@ mod tests {
         }
         v.rotate(1);
         v.pan_to_pointer((460.0, 70.0), (500, 100), area);
-        assert!(close(v.offset, (0.0, 400.0)));
+        assert!(close(v.offset, (100.0, 400.0)));
         v.fit(FitMode::Contain, img, area, 0.0);
         let fitted = v;
-        v.pan_to_pointer((420.0, 75.0), img, area);
+        v.pan_to_pointer(area.center(), img, area);
         assert_eq!(v, fitted);
+    }
+
+    #[test]
+    fn middle_press_positions_zoomed_out_image_and_respects_pan_limits() {
+        let area = Rect::new(100.0, 50.0, 400.0, 200.0);
+        let img = (800, 400);
+        let mut v = View {
+            zoom: 0.25,
+            ..View::default()
+        };
+        v.pan_to_pointer((340.0, 125.0), img, area);
+        assert_eq!(v.screen_rect(img, area).center(), (340.0, 125.0));
+        assert!(!v.fitted);
+        v.pan_to_pointer((490.0, 60.0), img, area);
+        assert_eq!(v.offset, (100.0, -50.0));
+        v.pan = PanMode::Free;
+        v.pan_to_pointer((490.0, 60.0), img, area);
+        assert_eq!(v.offset, (190.0, -90.0));
+        v.pan = PanMode::Center;
+        v.pan_to_pointer((490.0, 60.0), img, area);
+        assert_eq!(v.offset, (0.0, 0.0));
     }
 
     #[test]

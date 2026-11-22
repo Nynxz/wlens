@@ -28,6 +28,7 @@ impl App {
     }
 
     pub(super) fn pan_to_pointer(&mut self, at: PhysicalPosition<f64>) {
+        self.sync_pan_mode();
         if let Some(layer) = &mut self.current {
             self.target
                 .pan_to_pointer((at.x, at.y), layer.size, self.viewport);
