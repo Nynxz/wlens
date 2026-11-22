@@ -101,8 +101,8 @@ vbind("M", "video mute", "Mute")
 vbind("ClickImage", "video toggle", "Play / pause")
 for i = 0, 9 do vbind(tostring(i), "video seek " .. (i * 10) .. "%", nil) end
 
--- Right-click goes backwards: the previous image, or up a level in the grid.
-bind("RightClick", "prev", "Previous image")
+-- Right-click leaves the image for its thumbnails, then goes up a folder.
+bind("RightClick", "back", "Back to thumbnails")
 bind(",", "ui toggle settings", "Settings")
 bind("DoubleClick", function()
   local img = wlens.current()
@@ -130,7 +130,7 @@ gbind("Escape", function()
   if cur and not cur.container then wlens.gallery("close") else wlens.quit() end
 end, "Back / close")
 gbind("BackSpace", "back", "Back (parent level)")
-gbind("RightClick", "back", "Back (parent level)")
+bind("v", "gallery flat", "Toggle flat view")
 -- The mouse's side "back" button: image -> its grid -> parent level, like a browser.
 bind("MouseBack", "back", "Back")
 bind("MouseForward", "forward", "Forward")

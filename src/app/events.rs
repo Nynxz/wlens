@@ -100,9 +100,8 @@ impl ApplicationHandler<UserEvent> for App {
                     match result {
                         Ok(pages) => {
                             let title = self.items.get(self.index).map(Item::name);
-                            self.push_level(
-                                crate::model::archive_folder::ArchiveFolder::root(pages).items(),
-                                None,
+                            self.open_archive_folder(
+                                crate::model::archive_folder::ArchiveFolder::opened(&path, pages),
                                 title,
                             );
                         }

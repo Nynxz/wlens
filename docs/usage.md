@@ -13,10 +13,12 @@ downloaded in the background and cached.
 
 Opening `wlens photos.zip` shows its top-level folders and images. An archive
 with images only at the root opens on the first image. Use `--browse` to start
-in the grid in either case. Open a folder with Return or a click.
+in the grid in either case. Open a folder with Return or a click. A lone
+wrapper folder with the same name as the archive opens automatically.
 
 `wlens --flat photos.zip` reads images from every subfolder as one naturally
-sorted sequence. `--flat --browse` shows the sequence as thumbnails.
+sorted sequence. `--flat --browse` shows the sequence as thumbnails. Press
+`v` or choose **Toggle flat view** to switch while browsing.
 `wlens -n 12 photos.zip` also uses the flat sequence to start on page 12.
 ZIP, RAR, 7z, tar and common compressed tar formats are supported, including
 the CBZ, CBR, CB7 and CBT extensions.
@@ -105,7 +107,8 @@ The defaults:
 | `a` / `A` | Smooth ↔ pixelated / checkerboard |
 | `F` | Fullscreen |
 | `P` | Play / pause an animated image |
-| right-click | Previous image; in the gallery, up a level |
+| right-click | Return to thumbnails, then up one folder |
+| `v` | Toggle flat view for the current folder or archive |
 | mouse back button | Back (image → grid → parent level) |
 | `F5` | Refresh: asks a script to reload its list (its `refresh` hook), else reloads the image |
 | `R` | Reload the image from disk |

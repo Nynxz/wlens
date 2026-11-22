@@ -11,6 +11,7 @@ impl App {
         } else {
             self.forward_levels.clear();
             self.forward_image = false;
+            self.browser = None;
             self.items = items;
             self.index = start.unwrap_or(0);
             if self.items.is_empty()
@@ -133,6 +134,12 @@ impl App {
             ItemsOp::Pop => {
                 self.back();
             }
+            ItemsOp::Directory(path) => {
+                self.browser = Some(Browser {
+                    location: BrowserLocation::Directory(path),
+                    flat: false,
+                })
+            }
             ItemsOp::More(more) => {
                 self.script.shared.borrow_mut().more = more;
                 self.gallery.requested = None;
@@ -166,6 +173,7 @@ impl App {
             scroll: self.gallery.scroll,
             title: self.level_title.take(),
             more: std::mem::take(&mut self.script.shared.borrow_mut().more),
+            browser: self.browser.take(),
             forward_image: std::mem::take(&mut self.forward_image),
         }
     }
@@ -196,6 +204,7 @@ impl App {
 
     fn restore_level(&mut self, level: Level) {
         self.listing_archive = None;
+        self.browser = level.browser;
         self.forward_image = level.forward_image;
         self.items = level.items;
         self.index = level.index.min(self.items.len().saturating_sub(1));
@@ -216,6 +225,72 @@ impl App {
         self.redraw();
     }
 
+    pub(super) fn open_archive_folder(
+        &mut self,
+        folder: crate::model::archive_folder::ArchiveFolder,
+        title: Option<String>,
+    ) {
+        self.push_level(folder.items(), None, title);
+        self.browser = Some(Browser {
+            location: BrowserLocation::Archive(folder),
+            flat: false,
+        });
+    }
+
+    pub(super) fn toggle_flat(&mut self) {
+        let Some(mut browser) = self.browser.clone() else {
+            self.toast("Open a folder or archive to use flat view");
+            return;
+        };
+        browser.flat = !browser.flat;
+        let result = match &browser.location {
+            BrowserLocation::Archive(folder) => Ok(if browser.flat {
+                folder.flat_items()
+            } else {
+                folder.items()
+            }),
+            BrowserLocation::Directory(dir) if browser.flat => {
+                Ok(crate::files::flat_directory(dir))
+            }
+            BrowserLocation::Directory(dir) => self.script.directory_items(dir),
+        };
+        let items = match result {
+            Ok(items) => items,
+            Err(err) => {
+                self.toast(&format!("Could not open folder: {err}"));
+                return;
+            }
+        };
+        let selected = self.items.get(self.index);
+        let index = selected.and_then(|old| {
+            items.iter().position(|item| {
+                if item.src == old.src || (old.container && old.thumb.as_ref() == Some(&item.src)) {
+                    return true;
+                }
+                match (&old.src, &item.src) {
+                    (Source::Archive { entry, .. }, _) => item
+                        .archive_folder
+                        .as_ref()
+                        .is_some_and(|f| f.contains(entry)),
+                    (Source::Path(path), Source::Path(folder)) if item.container => {
+                        path.starts_with(folder)
+                    }
+                    _ => false,
+                }
+            })
+        });
+        self.gallery.active = true;
+        self.gallery.scroll = 0.0;
+        self.apply_items(items, false, index);
+        self.gallery.shown = self.gallery.scroll;
+        self.toast(if browser.flat {
+            "Flat view"
+        } else {
+            "Folder view"
+        });
+        self.browser = Some(browser);
+    }
+
     /// Enter the current container, or view the current image.
     pub(super) fn open_current(&mut self, event_loop: &ActiveEventLoop) {
         let Some(item) = self.items.get(self.index).cloned() else {
@@ -225,7 +300,7 @@ impl App {
             return self.set_gallery(false);
         }
         if let Some(folder) = &item.archive_folder {
-            self.push_level(folder.items(), None, Some(item.name()));
+            self.open_archive_folder(folder.clone(), Some(item.name()));
             return;
         }
         match item.open {

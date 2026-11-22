@@ -140,6 +140,18 @@ struct ThumbTex {
 /// At most this many thumbnails live on the GPU (~256 KiB each at 256px).
 const MAX_GPU_THUMBS: usize = 600;
 
+#[derive(Clone)]
+pub enum BrowserLocation {
+    Archive(crate::model::archive_folder::ArchiveFolder),
+    Directory(PathBuf),
+}
+
+#[derive(Clone)]
+pub struct Browser {
+    pub location: BrowserLocation,
+    pub flat: bool,
+}
+
 /// A level we can go `back` to (see `wlens.push_items`).
 struct Level {
     items: Vec<Item>,
@@ -147,6 +159,7 @@ struct Level {
     scroll: f64,
     title: Option<String>,
     more: bool,
+    browser: Option<Browser>,
     forward_image: bool,
 }
 
@@ -189,7 +202,7 @@ pub struct App {
     gallery: Gallery,
     stack: Vec<Level>,
     forward_levels: Vec<Level>,
-    from_gallery: bool,
+    pub browser: Option<Browser>,
     forward_image: bool,
     level_title: Option<String>,
     /// (depth, item count) for which `end_reached` already fired.
@@ -279,7 +292,7 @@ impl App {
             gallery: Gallery::default(),
             stack: Vec::new(),
             forward_levels: Vec::new(),
-            from_gallery: false,
+            browser: None,
             forward_image: false,
             level_title: None,
             end_fired: None,

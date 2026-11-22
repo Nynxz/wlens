@@ -188,6 +188,7 @@ pub enum ItemsOp {
     Pop,
     /// `wlens.set_more`: the current list may continue.
     More(bool),
+    Directory(std::path::PathBuf),
 }
 
 pub struct Binding {
@@ -328,6 +329,14 @@ impl Script {
         args.set("theme", theme)?;
         args.set("palette", palette)?;
         self.lua.globals().get::<Table>("wlens")?.set("args", args)
+    }
+
+    pub fn directory_items(&self, path: &std::path::Path) -> mlua::Result<Vec<Item>> {
+        let list: Table = self
+            .lua
+            .load("return wlens.widgets.directory_items(...)")
+            .call(path.to_string_lossy().as_ref())?;
+        parse_items(&list)
     }
 
     pub fn run_str(&self, name: &str, src: &str) -> mlua::Result<()> {

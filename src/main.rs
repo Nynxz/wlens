@@ -108,26 +108,42 @@ fn main() -> anyhow::Result<()> {
     let browse_dir = !cli.flat
         && archive.is_none()
         && (cli.browse || (single.is_some_and(|p| p.is_dir()) && !cli.recursive && cli.start == 1));
-    let (mut items, mut start) =
-        if let Some(path) = archive.filter(|_| !cli.flat && (cli.start == 1 || cli.browse)) {
-            let root =
-                model::archive_folder::ArchiveFolder::root(io::archive::list_entries(path, true)?);
-            let items = root.items();
-            let start = cli
-                .start
-                .saturating_sub(1)
-                .min(items.len().saturating_sub(1));
-            (items, start)
-        } else if browse_dir {
-            (Vec::new(), 0)
+    let mut browser = single
+        .filter(|p| p.is_dir() && (cli.flat || cli.recursive))
+        .map(|p| app::Browser {
+            location: app::BrowserLocation::Directory(p.clone()),
+            flat: true,
+        });
+    let (mut items, mut start) = if let Some(path) = archive {
+        let flat = cli.flat || (cli.start > 1 && !cli.browse);
+        let root = model::archive_folder::ArchiveFolder::opened(
+            path,
+            io::archive::list_entries(path, true)?,
+        );
+        let items = if flat {
+            root.flat_items()
         } else {
-            files::gather(&files::Request {
-                inputs: &cli.files,
-                recursive: cli.recursive || cli.flat,
-                siblings: cli.siblings,
-                start: cli.start,
-            })?
+            root.items()
         };
+        let start = cli
+            .start
+            .saturating_sub(1)
+            .min(items.len().saturating_sub(1));
+        browser = Some(app::Browser {
+            location: app::BrowserLocation::Archive(root),
+            flat,
+        });
+        (items, start)
+    } else if browse_dir {
+        (Vec::new(), 0)
+    } else {
+        files::gather(&files::Request {
+            inputs: &cli.files,
+            recursive: cli.recursive || cli.flat,
+            siblings: cli.siblings,
+            start: cli.start,
+        })?
+    };
     let browse_items = !browse_dir
         && (cli.browse || (archive.is_some() && items.iter().any(|item| item.container)));
 
@@ -216,8 +232,15 @@ fn main() -> anyhow::Result<()> {
             match op {
                 lua::ItemsOp::Add(list) => items.extend(list),
                 lua::ItemsOp::Set(list, idx) | lua::ItemsOp::Push(list, idx, _) => {
+                    browser = None;
                     items = list;
                     start = idx.unwrap_or(0);
+                }
+                lua::ItemsOp::Directory(dir) => {
+                    browser = Some(app::Browser {
+                        location: app::BrowserLocation::Directory(dir),
+                        flat: false,
+                    })
                 }
                 lua::ItemsOp::Pop => {}
                 lua::ItemsOp::More(m) => sh.more = m,
@@ -260,6 +283,7 @@ fn main() -> anyhow::Result<()> {
         event_loop.create_proxy(),
         instance,
     );
+    app.browser = browser;
     let socket = ipc.map(|s| s.serve(event_loop.create_proxy()));
     event_loop.run_app(&mut app)?;
     drop(socket); // remove the socket file before exiting

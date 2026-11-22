@@ -47,7 +47,6 @@ impl App {
             return;
         }
         if !on {
-            self.from_gallery = true;
             self.forward_image = false;
             self.forward_levels.clear();
         }
@@ -73,6 +72,7 @@ impl App {
             // Image view -> grid; grid -> the selected image. A selected
             // folder / gallery has no image view, so the grid stays (opening
             // it is `open` / Return / a click).
+            "flat" => self.toggle_flat(),
             "toggle" if self.gallery.active => {
                 if self.items.get(self.index).is_some_and(|i| !i.container) {
                     self.set_gallery(false);
@@ -391,6 +391,32 @@ impl App {
                     op,
                 );
                 quads.push((Some(t.tex), q));
+            }
+            if container
+                && has_thumb
+                && let Some(icon) = &self.items[i].icon
+            {
+                let side = (24.0 * scale as f64).min(r.w).min(r.h);
+                let badge = Rect::new(r.x + 3.0, r.y + 3.0, side, side);
+                quads.push((
+                    None,
+                    Quad::solid(
+                        badge,
+                        crate::model::theme::Color([0.0, 0.0, 0.0, 0.72]),
+                        radius,
+                        none,
+                        op,
+                    ),
+                ));
+                texts.push(TextDraw {
+                    text: icon.clone(),
+                    family: th.font_family.clone(),
+                    size: (side * 0.68) as f32,
+                    rect: badge,
+                    align: Align::Center,
+                    color: crate::model::theme::Color([1.0, 1.0, 1.0, op]),
+                    clip: None,
+                });
             }
             let ring = if i == self.index {
                 Some((th.gallery_selected, th.gallery_selected_width))

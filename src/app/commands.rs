@@ -115,11 +115,7 @@ impl App {
             Command::Gallery(action, amount) => self.gallery_command(&action, amount),
             Command::Back => {
                 // One step at a time: image view -> this level's grid -> parent level.
-                if !self.gallery.active
-                    && (self.from_gallery
-                        || !self.stack.is_empty()
-                        || self.items.iter().any(|i| i.container))
-                {
+                if !self.gallery.active {
                     self.set_gallery(true);
                     self.forward_image = true;
                 } else if !self.back() {

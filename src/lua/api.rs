@@ -174,17 +174,23 @@ impl Script {
             let sh = shared.clone();
             w.set(
                 name,
-                lua.create_function(move |_, (list, start): (Table, Option<usize>)| {
-                    let items = parse_items(&list)?;
-                    let start = start.map(|i| i.saturating_sub(1));
-                    let op = if append {
-                        ItemsOp::Add(items)
-                    } else {
-                        ItemsOp::Set(items, start)
-                    };
-                    sh.borrow_mut().pending_items.push(op);
-                    Ok(())
-                })?,
+                lua.create_function(
+                    move |_, (list, start, directory): (Table, Option<usize>, Option<String>)| {
+                        let items = parse_items(&list)?;
+                        let start = start.map(|i| i.saturating_sub(1));
+                        let op = if append {
+                            ItemsOp::Add(items)
+                        } else {
+                            ItemsOp::Set(items, start)
+                        };
+                        let mut sh = sh.borrow_mut();
+                        sh.pending_items.push(op);
+                        if !append && let Some(dir) = directory {
+                            sh.pending_items.push(ItemsOp::Directory(dir.into()));
+                        }
+                        Ok(())
+                    },
+                )?,
             )?;
         }
 
@@ -195,6 +201,11 @@ impl Script {
             lua.create_function(move |_, (list, opts): (Table, Option<Table>)| {
                 let items = parse_items(&list)?;
                 let (mut start, mut title) = (None, None);
+                let directory = opts
+                    .as_ref()
+                    .map(|o| o.get::<Option<String>>("directory"))
+                    .transpose()?
+                    .flatten();
                 if let Some(o) = opts {
                     start = o
                         .get::<Option<usize>>("index")?
@@ -203,6 +214,9 @@ impl Script {
                 }
                 let mut s = sh.borrow_mut();
                 s.pending_items.push(ItemsOp::Push(items, start, title));
+                if let Some(dir) = directory {
+                    s.pending_items.push(ItemsOp::Directory(dir.into()));
+                }
                 // wlens.depth() counts it straight away (it's applied later).
                 s.depth += 1;
                 Ok(())

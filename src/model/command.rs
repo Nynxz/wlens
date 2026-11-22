@@ -218,7 +218,7 @@ impl std::str::FromStr for Command {
             "gallery" | "grid" => {
                 const ACTIONS: &[&str] = &[
                     "toggle", "open", "close", "up", "down", "left", "right", "pageup", "pagedown",
-                    "bigger", "smaller", "scroll",
+                    "bigger", "smaller", "scroll", "flat",
                 ];
                 let action = args.first().copied().unwrap_or("toggle");
                 if !ACTIONS.contains(&action) {

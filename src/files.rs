@@ -78,13 +78,19 @@ fn scan_dir(dir: &Path, recursive: bool, out: &mut Vec<PathBuf>) {
     });
     for p in entries {
         if p.is_dir() {
-            if recursive {
+            if recursive && !p.is_symlink() {
                 scan_dir(&p, true, out);
             }
         } else if is_image(&p) || is_video(&p) {
             out.push(p);
         }
     }
+}
+
+pub fn flat_directory(path: &Path) -> Vec<Item> {
+    let mut files = Vec::new();
+    scan_dir(path, true, &mut files);
+    paths_to_items(files)
 }
 
 fn paths_to_items(paths: Vec<PathBuf>) -> Vec<Item> {

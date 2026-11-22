@@ -42,7 +42,9 @@ wlens.set_items {
 `wlens ~/Pictures` opens the folder browser. Folders and archives appear first,
 then images and supported videos. Return opens the selected tile. Alt+Left
 and Alt+Right, or the mouse's back and forward buttons, revisit a folder with
-its selection and scroll position. Opening a different folder starts a new
+its selection and scroll position. Right-click leaves an image for its thumbnails;
+right-click again to return to the parent folder. Press `v` to include
+subfolders in a single grid, and press it again to restore the folder view. Opening a different folder starts a new
 forward history.
 
 Open an archive tile or run `wlens photos.zip` to navigate its folders one

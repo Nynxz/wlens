@@ -26,16 +26,18 @@ const LIMITS: Limits = Limits {
 };
 
 pub fn is_archive(path: &Path) -> bool {
-    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-        return false;
-    };
-    let name = name.to_ascii_lowercase();
+    display_stem(path).is_some()
+}
+
+pub fn display_stem(path: &Path) -> Option<&str> {
+    let name = path.file_name()?.to_str()?;
+    let lower = name.to_ascii_lowercase();
     [
         ".cbz", ".zip", ".cbr", ".rar", ".cb7", ".7z", ".cbt", ".tar", ".tar.gz", ".tgz",
         ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar.zst",
     ]
     .iter()
-    .any(|suffix| name.ends_with(suffix))
+    .find_map(|ext| lower.strip_suffix(ext).map(|stem| &name[..stem.len()]))
 }
 
 pub fn list(path: &Path) -> Result<Vec<Source>> {
