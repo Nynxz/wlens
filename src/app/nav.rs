@@ -200,6 +200,17 @@ impl App {
                 let info = self.script.info_value();
                 self.script.call_with(&f, info, "item open");
             }
+            None if let Source::Path(path) = item.src
+                && crate::io::archive::is_archive(&path) =>
+            {
+                if self.listing_archive.as_ref() != Some(&path)
+                    && let Some(loader) = &self.loader
+                {
+                    loader.request_front(vec![Job::ListArchive(path.clone())]);
+                    self.listing_archive = Some(path);
+                    self.toast("Opening archive…");
+                }
+            }
             None => self.toast("Nothing to open"),
         }
         self.drain_queue(event_loop);

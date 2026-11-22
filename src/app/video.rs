@@ -19,6 +19,7 @@ const VIDEO_CACHE_MAX: u64 = 128 * 1024 * 1024;
 /// `file://` for local paths, the URL itself for remote ones (streamed).
 fn uri_for(src: &Source) -> Option<String> {
     match src {
+        Source::Archive { .. } => None,
         Source::Url(u) => Some(u.clone()),
         Source::Path(p) => {
             let abs = std::fs::canonicalize(p).ok()?;

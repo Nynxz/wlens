@@ -267,3 +267,27 @@ fn every_layout_region_is_a_panel() {
     )
     .unwrap();
 }
+
+#[test]
+fn folder_browser_exposes_comics_as_containers() {
+    let s = Script::new().unwrap();
+    s.lua
+        .globals()
+        .set(
+            "fixture_dir",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"),
+        )
+        .unwrap();
+    s.run_str("=browse", "wlens.widgets.browse(fixture_dir)")
+        .unwrap();
+    let sh = s.shared.borrow();
+    let ItemsOp::Set(items, _) = &sh.pending_items[0] else {
+        panic!("expected folder contents")
+    };
+    assert_eq!(items.len(), 4);
+    assert!(
+        items
+            .iter()
+            .all(|item| item.container && item.icon.is_some())
+    );
+}

@@ -3,6 +3,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Range;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -42,6 +43,10 @@ mod view;
 use cache::{Cache, Slot};
 
 pub enum UserEvent {
+    ArchiveListed {
+        path: PathBuf,
+        result: Result<Vec<Source>, String>,
+    },
     Loaded {
         src: Source,
         result: LoadResult,
@@ -201,6 +206,7 @@ pub struct App {
     muted: bool,
     /// Set by commands that should open the current container once they finish.
     pending_open: bool,
+    listing_archive: Option<PathBuf>,
     /// The window or renderer couldn't be created; exit with an error.
     pub startup_failed: bool,
 
@@ -289,6 +295,7 @@ impl App {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false),
             pending_open: false,
+            listing_archive: None,
             startup_failed: false,
             ui,
             text_dirty: true,

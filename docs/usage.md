@@ -8,13 +8,34 @@ With no arguments wlens opens the images in the current directory. `-`
 reads paths or URLs from stdin, one per line. `http(s)://` arguments are
 downloaded in the background and cached.
 
+## Reading archives
+
+`wlens comic.cbz` opens the first image. Use `wlens -n 12 comic.cbz` to
+start on page 12. Press Return for page thumbnails, or open the grid directly
+with `wlens --browse comic.cbz`. ZIP/CBZ, RAR/CBR,
+7z/CB7, TAR/CBT and common compressed tar files can contain images in
+subfolders. Pages are sorted by the full entry name, so `chapter2/page9.png`
+comes before `chapter2/page10.png` and `chapter10/page1.png`.
+
+When you first view a page or request its thumbnail, a background worker
+extracts all image pages in archive order. This lets solid archives share
+one decompression pass across pages. Extracted images are stored under
+`$XDG_CACHE_HOME/wlens/archives` (normally `~/.cache/wlens/archives`) with
+hashed names. Later sessions reuse them. Editing or replacing an archive
+creates a new cache directory. You can remove the archives cache while
+wlens is closed to reclaim space.
+
+An archive can have up to 10,000 entries, 256 MiB per image and 2 GiB of
+uncompressed content in total. Archive pages use the viewer's supported
+image formats and must be unencrypted.
+
 ## Flags
 
 | Flag | |
 |---|---|
 | `-r, --recursive` | Include images in subdirectories |
 | `-S, --siblings` | Given one file, browse the other images in its folder |
-| `-b, --browse` | Folders become tiles you can open (see [Galleries](galleries.md)) |
+| `-b, --browse` | Folders and archives become tiles you can open (see [Galleries](galleries.md)) |
 | `-n, --start N` | Start at the Nth image (1-based) |
 | `-f, --fullscreen` | Start fullscreen |
 | `-t, --theme NAME` | `minimal`, `simple`, `lightbox`, or your own; overrides `wlens.use()` in configs. Env: `WLENS_THEME` |
