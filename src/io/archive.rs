@@ -3,12 +3,13 @@
 
 use std::collections::HashSet;
 use std::fs::{self, File, Metadata};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Component, Path, PathBuf};
 
-use anyhow::{Context, Result, bail, ensure};
-use compress_tools::{ArchiveContents, ArchiveIteratorBuilder};
+use anyhow::{Context, Result, ensure};
+mod reader;
+use reader::Reader;
 
 use crate::model::item::Source;
 
@@ -39,7 +40,7 @@ pub fn is_archive(path: &Path) -> bool {
 
 pub fn list(path: &Path) -> Result<Vec<Source>> {
     let archive = fs::canonicalize(path)?;
-    let mut names = walk(File::open(&archive)?, None, &LIMITS)
+    let mut names = walk(open_archive(&archive)?, None, &LIMITS)
         .with_context(|| format!("listing {}", archive.display()))?;
     ensure!(
         !names.is_empty(),
@@ -54,6 +55,15 @@ pub fn list(path: &Path) -> Result<Vec<Source>> {
             entry,
         })
         .collect())
+}
+
+fn open_archive(path: &Path) -> Result<File> {
+    let file = File::options()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)?;
+    ensure!(file.metadata()?.is_file(), "archive must be a regular file");
+    Ok(file)
 }
 
 fn page_name(name: &str) -> bool {
@@ -95,7 +105,7 @@ pub(super) fn revision(meta: &Metadata) -> String {
 fn root() -> Result<PathBuf> {
     Ok(dirs::cache_dir()
         .context("no cache directory")?
-        .join("wlens/archives"))
+        .join("wlens/archives/v2"))
 }
 
 pub fn cached_path(archive: &Path, entry: &str) -> Result<PathBuf> {
@@ -113,7 +123,7 @@ pub fn materialize(archive: &Path, entry: &str) -> Result<PathBuf> {
 }
 
 fn materialize_in(archive: &Path, entry: &str, root: &Path) -> Result<PathBuf> {
-    let file = File::open(archive)?;
+    let file = open_archive(archive)?;
     let key = revision(&file.metadata()?);
     let dir = root.join(&key);
     let pages = dir.join("pages");
@@ -152,26 +162,17 @@ fn materialize_in(archive: &Path, entry: &str, root: &Path) -> Result<PathBuf> {
 }
 
 fn walk(file: File, output: Option<&Path>, limits: &Limits) -> Result<Vec<String>> {
-    let mut iter = ArchiveIteratorBuilder::new(file)
-        .mtree_format(false)
-        .build()?;
+    let mut iter = Reader::new(file)?;
     let mut names = HashSet::new();
     let mut headers = 0;
     let mut total = 0;
-    while let Some(header) = iter.next_header() {
-        let (name, stat) = match header {
-            ArchiveContents::StartOfEntry(name, stat) => (name, stat),
-            ArchiveContents::Err(e) => return Err(e.into()),
-            _ => bail!("unexpected archive header"),
-        };
+    while let Some((name, regular, declared)) = iter.header()? {
         headers += 1;
         ensure!(headers <= limits.entries, "too many archive entries");
-        ensure!(name.len() <= 4096, "archive entry name too long");
         let remaining = limits.total - total;
-        let declared = stat.st_size.max(0) as u64;
         ensure!(declared <= remaining, "archive exceeds total size limit");
         total += declared;
-        if stat.st_mode & libc::S_IFMT != libc::S_IFREG || !page_name(&name) {
+        if !regular || !page_name(&name) {
             continue;
         }
         ensure!(
@@ -195,34 +196,26 @@ fn walk(file: File, output: Option<&Path>, limits: &Limits) -> Result<Vec<String
         ensure!(written >= declared, "truncated archive page");
         total += written.saturating_sub(declared);
     }
-    iter.close()?;
     Ok(names.into_iter().collect())
 }
 
 // Enforce the remaining budget before each write, even when a header
 // omits or understates the uncompressed size.
-fn copy_page(
-    iter: &mut impl Iterator<Item = ArchiveContents>,
-    page: &mut impl Write,
-    capacity: u64,
-) -> Result<u64> {
+fn copy_page(reader: &mut impl Read, page: &mut impl Write, capacity: u64) -> Result<u64> {
+    let mut buf = [0; 64 * 1024];
     let mut written = 0;
-    for event in iter {
-        match event {
-            ArchiveContents::DataChunk(chunk) => {
-                ensure!(
-                    chunk.len() as u64 <= capacity - written,
-                    "archive data exceeds size limit"
-                );
-                page.write_all(&chunk)?;
-                written += chunk.len() as u64;
-            }
-            ArchiveContents::EndOfEntry => return Ok(written),
-            ArchiveContents::Err(e) => return Err(e.into()),
-            ArchiveContents::StartOfEntry(..) => break,
+    loop {
+        let count = reader.read(&mut buf)?;
+        if count == 0 {
+            return Ok(written);
         }
+        ensure!(
+            count as u64 <= capacity - written,
+            "archive data exceeds size limit"
+        );
+        page.write_all(&buf[..count])?;
+        written += count as u64;
     }
-    bail!("incomplete archive page")
 }
 
 #[cfg(test)]
@@ -278,6 +271,24 @@ mod tests {
     }
 
     #[test]
+    fn only_image_paths_and_supported_formats_are_accepted() {
+        for name in [
+            "/outside.png",
+            "../outside.png",
+            "album/../image.jpg",
+            "notes.txt",
+        ] {
+            assert!(filename(name).is_err());
+        }
+        assert!(filename("album/photo.png").is_ok());
+        let root = temp_dir("unsupported");
+        let path = root.join("empty.zip");
+        fs::write(&path, b"!<arch>\n").unwrap(); // empty ar, a format we do not register
+        assert!(walk(open_archive(&path).unwrap(), None, &LIMITS).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn limits_apply_to_headers_and_payloads() {
         for (limits, text) in [
             (
@@ -303,15 +314,10 @@ mod tests {
 
     #[test]
     fn streamed_data_cannot_exceed_remaining_budget() {
-        let mut chunks = [
-            ArchiveContents::DataChunk(vec![1, 2]),
-            ArchiveContents::DataChunk(vec![3, 4]),
-            ArchiveContents::EndOfEntry,
-        ]
-        .into_iter();
+        let data = vec![1; 64 * 1024 + 2];
         let mut output = Vec::new();
-        assert!(copy_page(&mut chunks, &mut output, 3).is_err());
-        assert_eq!(output, [1, 2]);
+        assert!(copy_page(&mut data.as_slice(), &mut output, 64 * 1024 + 1).is_err());
+        assert_eq!(output.len(), 64 * 1024);
     }
 
     #[test]

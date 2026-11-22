@@ -200,7 +200,20 @@ pub(super) fn resolve(src: &Source) -> anyhow::Result<PathBuf> {
     match src {
         Source::Path(p) => Ok(p.clone()),
         Source::Url(u) => crate::io::remote::fetch_to_cache(u),
-        Source::Archive { archive, entry } => crate::io::archive::materialize(archive, entry),
+        Source::Archive { archive, entry } => {
+            let page = crate::io::archive::materialize(archive, entry)?;
+            // Archive byte limits do not bound the decoded image or animation canvas.
+            let decoder = ImageReader::open(&page)?
+                .with_guessed_format()?
+                .into_decoder()?;
+            let (w, h) = decoder.dimensions();
+            let pixels = u64::from(w) * u64::from(h);
+            anyhow::ensure!(
+                pixels <= (64 << 20) && decoder.total_bytes() <= (256 << 20),
+                "archive image exceeds decoded size limit"
+            );
+            Ok(page)
+        }
     }
 }
 

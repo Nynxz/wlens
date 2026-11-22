@@ -27,7 +27,8 @@ wlens is closed to reclaim space.
 
 An archive can have up to 10,000 entries, 256 MiB per image and 2 GiB of
 uncompressed content in total. Archive pages use the viewer's supported
-image formats and must be unencrypted.
+image formats and must be unencrypted. Each page is limited to 64 megapixels
+(64 × 1024² pixels) and 256 MiB of decoded pixel data before display or thumbnailing.
 
 ## Flags
 
