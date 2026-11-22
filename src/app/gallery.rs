@@ -46,6 +46,7 @@ impl App {
         if on == self.gallery.active {
             return;
         }
+        self.gallery.resize_anchor = None;
         self.gallery.active = on;
         if on {
             self.ensure_selection_visible();
@@ -90,8 +91,32 @@ impl App {
                 };
                 t.gallery_size = size.clamp(48.0, 1024.0);
                 drop(sh);
+                let resized = self.grid();
+                if g != resized && n > 0 {
+                    let shown = self.gallery.shown;
+                    let pointer = self.zoom_anchor.filter(|&p| g.vp.contains(p));
+                    let selected = g.cell_rect(self.index, shown).center();
+                    let point = pointer.unwrap_or_else(|| {
+                        if g.vp.contains(selected) {
+                            selected
+                        } else {
+                            g.vp.center()
+                        }
+                    });
+                    let anchor = self
+                        .gallery
+                        .resize_anchor
+                        .filter(|&(p, i)| Some(p) == pointer && i < n)
+                        .map(|(_, i)| i)
+                        .unwrap_or_else(|| g.nearest_tile(point, shown, n));
+                    self.gallery.resize_anchor = pointer.map(|p| (p, anchor));
+                    let scroll = g
+                        .resized_scroll(&resized, anchor, shown, point.1)
+                        .clamp(0.0, resized.max_scroll(self.grid_len(&resized)));
+                    self.gallery.scroll = scroll;
+                    self.gallery.shown = scroll;
+                }
                 self.gallery.requested = None;
-                self.ensure_selection_visible();
             }
             "scroll" => {
                 let rows = amount.unwrap_or(1.0);

@@ -100,6 +100,23 @@ impl Grid {
             .find(|&i| self.cell_rect(i, scroll).contains(p))
     }
 
+    /// The closest real tile, including when the pointer falls in a gutter
+    /// or past the end of a short final row. The list must be nonempty.
+    pub fn nearest_tile(&self, point: (f64, f64), scroll: f64, count: usize) -> usize {
+        let first = self.rect(0, scroll);
+        let col = ((point.0 - first.x + self.gap / 2.0) / (self.cell + self.gap)).floor() as usize;
+        let row = ((point.1 - first.y + self.gap / 2.0) / self.row_h()).floor() as usize;
+        (row * self.cols + col.min(self.cols - 1)).min(count - 1)
+    }
+
+    /// Keep the same vertical point of a tile at screen_y after the grid reflows.
+    pub fn resized_scroll(&self, resized: &Self, index: usize, scroll: f64, screen_y: f64) -> f64 {
+        let before = self.cell_rect(index, scroll);
+        let after = resized.cell_rect(index, 0.0);
+        let fraction = (screen_y - before.y) / before.h;
+        after.y + fraction * after.h - screen_y
+    }
+
     /// The scroll offset that brings item `i` fully into view with the least movement.
     pub fn scroll_to_show(&self, i: usize, scroll: f64, n: usize) -> f64 {
         let r = self.cell_rect(i, 0.0);
@@ -156,6 +173,22 @@ mod tests {
             20.0,
             "visible item: no movement"
         );
+    }
+
+    #[test]
+    fn resizing_deep_in_a_grid_preserves_the_pointer_row() {
+        let grid = grid();
+        let larger = Grid::new(grid.vp, 144.0, 10.0, 10.0, 16.0).with_insets(20.0, 6.0);
+        let pointer = (121.0, 110.0); // in the gutter
+        let scroll = 3000.0;
+        let anchor = grid.nearest_tile(pointer, scroll, 500);
+        assert!(anchor > 100);
+        let next = grid.resized_scroll(&larger, anchor, scroll, pointer.1);
+        let tile = larger.cell_rect(anchor, next);
+        assert!((tile.y..=tile.y + tile.h).contains(&pointer.1));
+        let restored = larger.resized_scroll(&grid, anchor, next, pointer.1);
+        assert!((restored - scroll).abs() < 0.001);
+        assert_eq!(grid.nearest_tile(pointer, scroll, 3), 2);
     }
 
     #[test]

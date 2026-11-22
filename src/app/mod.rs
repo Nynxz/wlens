@@ -152,6 +152,8 @@ struct Gallery {
     /// Scroll target and the animated value drawn.
     scroll: f64,
     shown: f64,
+    /// Tile held under a stationary wheel gesture as columns reflow.
+    resize_anchor: Option<((f64, f64), usize)>,
     thumbs: HashMap<Source, ThumbTex>,
     pending: HashSet<(Source, u32)>,
     failed: HashSet<Source>,

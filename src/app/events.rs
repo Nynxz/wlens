@@ -152,7 +152,13 @@ impl ApplicationHandler<UserEvent> for App {
                 self.redraw();
             }
             WindowEvent::RedrawRequested => self.render(),
-            WindowEvent::ModifiersChanged(m) => self.mods = m.state(),
+            WindowEvent::ModifiersChanged(m) => {
+                if self.mods != m.state() {
+                    self.scroll_accum = 0.0;
+                    self.gallery.resize_anchor = None;
+                }
+                self.mods = m.state();
+            }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 if self.focus.is_some() && self.input_key(event_loop, &event) {
                     return;
@@ -177,6 +183,29 @@ impl ApplicationHandler<UserEvent> for App {
                 // Touchpads send many small pixel deltas; turn them into
                 // discrete steps so `ScrollUp` binds behave like a wheel.
                 const PX_PER_STEP: f64 = 40.0;
+                let steps = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y as f64,
+                    MouseScrollDelta::PixelDelta(p) => p.y / (PX_PER_STEP * self.scale as f64),
+                };
+                if self.gallery.active && steps != 0.0 {
+                    let name = if steps > 0.0 {
+                        "scrollup"
+                    } else {
+                        "scrolldown"
+                    };
+                    let chord = Chord::named(name, self.mods);
+                    if let Some(Action::Command(Command::Gallery(action, factor))) =
+                        self.script.binding(&chord, self.mode())
+                        && matches!(action.as_str(), "bigger" | "smaller")
+                    {
+                        let step = factor.unwrap_or(1.15).powf(steps.abs());
+                        self.zoom_anchor = self.cursor.map(|c| (c.x, c.y));
+                        self.exec(event_loop, Command::Gallery(action, Some(step)));
+                        self.zoom_anchor = None;
+                        return;
+                    }
+                }
+                self.gallery.resize_anchor = None;
                 let dy = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y as f64,
                     MouseScrollDelta::PixelDelta(p) => {
