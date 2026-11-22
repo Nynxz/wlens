@@ -16,14 +16,7 @@ impl App {
         };
         let drag = self.press.as_ref().filter(|p| p.dragged && !p.on_ui);
         let icon = match drag.map(|p| p.button) {
-            Some(MouseButton::Middle) if !self.gallery.active => {
-                let image = self.target.screen_rect(self.img_size(), self.viewport);
-                if image.w > self.viewport.w || image.h > self.viewport.h {
-                    CursorIcon::Crosshair
-                } else {
-                    CursorIcon::Default
-                }
-            }
+            Some(MouseButton::Middle) if !self.gallery.active => CursorIcon::Crosshair,
             Some(_) => CursorIcon::Grabbing,
             None if hit.pointer || thumb.is_some() => CursorIcon::Pointer,
             None => CursorIcon::Default,
