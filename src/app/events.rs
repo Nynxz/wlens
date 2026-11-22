@@ -151,6 +151,10 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 self.redraw();
             }
+            WindowEvent::Focused(false) => {
+                self.press = None;
+                self.update_cursor();
+            }
             WindowEvent::RedrawRequested => self.render(),
             WindowEvent::ModifiersChanged(m) => self.mods = m.state(),
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
@@ -230,20 +234,7 @@ impl ApplicationHandler<UserEvent> for App {
                 self.cursor = Some(position);
                 self.last_motion = Instant::now();
                 let p = (position.x, position.y);
-                let ui_hit = self.ui.hit(p);
-                let thumb = if self.gallery.active && !ui_hit.over_ui {
-                    self.grid()
-                        .index_at(p, self.gallery.shown, self.items.len())
-                } else {
-                    None
-                };
-                if let Some(w) = &self.window {
-                    w.set_cursor(if ui_hit.pointer || thumb.is_some() {
-                        CursorIcon::Pointer
-                    } else {
-                        CursorIcon::Default
-                    });
-                }
+                let thumb = self.update_cursor();
                 // Mouse motion alone changes nothing on screen unless it
                 // drags, moves between hover targets, or reveals controls.
                 let hover = (self.ui.hover_key(p), thumb);
@@ -289,6 +280,7 @@ impl ApplicationHandler<UserEvent> for App {
                             self.slide(event_loop, i, at.x);
                         } else if seek_on_press {
                             self.pan_to_pointer(at);
+                            self.update_cursor();
                         }
                     }
                 }
@@ -303,6 +295,7 @@ impl ApplicationHandler<UserEvent> for App {
                             self.click(event_loop, p.at);
                         }
                     }
+                    self.update_cursor();
                 }
                 (MouseButton::Right, ElementState::Pressed) => {
                     self.trigger(event_loop, &Chord::named("rightclick", self.mods));

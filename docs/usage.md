@@ -101,7 +101,7 @@ In the gallery the arrows (and `h j k l`) move the selection, `PageUp` /
   click zones; the cursor changes over them when there's somewhere to go).
 - Drag with the left button to move the image with the pointer. Small images
   can be moved within the window (`pan = "bounded"`).
-- Hold the middle button to explore a zoomed image. Press near the right edge
+- Hold the middle button to explore a zoomed image with a crosshair. Press near the right edge
   to see the right side, or move to the center to see the middle. The outer
   10% on each side reaches the corresponding image edge.
 - Scroll to zoom around the cursor; in the gallery, scroll or drag to move.
