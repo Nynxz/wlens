@@ -942,6 +942,7 @@ function W.menu(o)
     attach = o.attach == nil and (id .. "_button") or o.attach or nil,
     -- No gaps between rows: the highlight moves straight from one to the next.
     direction = "column", padding = 5, gap = 0, width = o.width or 240,
+    max_height = "100%", scroll = true,
     background = W.style.panel, radius = W.style.radius,
     border = { width = 1, color = W.style.panel_border },
     shadow = { size = 18, color = "#00000099", y = 6 },

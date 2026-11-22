@@ -494,3 +494,35 @@ fn pass_through_elements_let_the_mouse_reach_what_is_below() {
         Some(button)
     );
 }
+
+#[test]
+fn short_menu_scrolls_to_last_clickable_command() {
+    let script = crate::lua::Script::new().unwrap();
+    let tree = script
+        .lua
+        .load(
+            r#"
+        return {{ id = "menu_button", anchor = "top-right", width = 24, height = 24 },
+                wlens.widgets.menu { margin = 6 }}
+    "#,
+        )
+        .eval()
+        .unwrap();
+    let mut ui = Ui::parse(tree).unwrap();
+    ui.set_forced("menu", "show").unwrap();
+    ui.refresh(&str::to_owned, &LuaValue::Nil);
+    for n in &mut ui.nodes {
+        n.vis = 1.0;
+        n.opacity = 1.0;
+    }
+    let win = Rect::new(0.0, 0.0, 420.0, 160.0);
+    let theme = Theme::default();
+    ui.layout(win, 1.0, &theme, &mut Fixed);
+    let panel = ui.nodes[ui.roots[1]].children[0];
+    let last = *ui.nodes[panel].children.last().unwrap();
+    assert!(ui.scroll_at(ui.nodes[panel].rect.center(), -2000.0));
+    ui.layout(win, 1.0, &theme, &mut Fixed);
+    let point = ui.nodes[last].rect.center();
+    assert!(win.contains(point));
+    assert_eq!(ui.hit(point).clickable, Some(last));
+}
