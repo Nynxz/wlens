@@ -136,14 +136,17 @@ impl Ui {
                 (5.0 * scale) as f64,
                 (8.0 * scale) as f64,
             );
-            let (w, h) = (tw as f64 + 2.0 * px, th as f64 + 2.0 * py);
+            let w = (tw as f64 + 2.0 * px).min(win.w);
+            let h = th as f64 + 2.0 * py;
             let r = n.rect;
             let mut y = r.y - gap - h;
             if y < win.y {
                 y = r.y + r.h + gap;
             }
-            let x = (r.x + r.w / 2.0 - w / 2.0)
-                .clamp(win.x + gap, (win.x + win.w - w - gap).max(win.x));
+            let spare = win.w - w;
+            let margin = gap.min(spare / 2.0);
+            let centered = r.center().0 - win.x - w / 2.0;
+            let x = win.x + centered.clamp(margin, spare - margin);
             self.tip_rect = Rect::new(x, y, w, h);
         }
     }

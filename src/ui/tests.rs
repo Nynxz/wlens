@@ -74,6 +74,31 @@ fn build(src: &str) -> Ui {
 }
 
 #[test]
+fn hovered_tooltip_fits_narrow_windows() {
+    let mut ui =
+        build(r#"return {{ anchor = "top-right", text = "file", tooltip = "0123456789" }}"#);
+    let theme = Theme::default();
+    let cursor = ui.nodes[ui.roots[0]].rect.center();
+    ui.animate(0.016, &theme, Some(cursor), true);
+    assert!(ui.tip.is_some());
+
+    // At 150% scale this tooltip measures 120px, plus a preferred 12px margin on each side.
+    for (origin, width, expected_x, expected_w) in [
+        (0.0, 100.0, 0.0, 100.0),
+        (0.0, 130.0, 5.0, 120.0),
+        (20.0, 300.0, 188.0, 120.0),
+    ] {
+        ui.layout(
+            Rect::new(origin, 0.0, width, 200.0),
+            1.5,
+            &theme,
+            &mut Fixed,
+        );
+        assert_eq!((ui.tip_rect.x, ui.tip_rect.w), (expected_x, expected_w));
+    }
+}
+
+#[test]
 fn justify_and_three_section_bar() {
     let ui = build(
         r#"return {
