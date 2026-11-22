@@ -269,7 +269,7 @@ fn every_layout_region_is_a_panel() {
 }
 
 #[test]
-fn folder_browser_exposes_comics_as_containers() {
+fn folder_browser_exposes_archives_as_containers() {
     let s = Script::new().unwrap();
     s.lua
         .globals()

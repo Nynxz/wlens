@@ -8,18 +8,18 @@ With no arguments wlens opens the images in the current directory. `-`
 reads paths or URLs from stdin, one per line. `http(s)://` arguments are
 downloaded in the background and cached.
 
-## Reading archives
+## Viewing images in archives
 
-`wlens comic.cbz` opens the first image. Use `wlens -n 12 comic.cbz` to
-start on page 12. Press Return for page thumbnails, or open the grid directly
-with `wlens --browse comic.cbz`. ZIP/CBZ, RAR/CBR,
-7z/CB7, TAR/CBT and common compressed tar files can contain images in
-subfolders. Pages are sorted by the full entry name, so `chapter2/page9.png`
-comes before `chapter2/page10.png` and `chapter10/page1.png`.
+`wlens photos.zip` opens the first image. Use `wlens -n 12 photos.zip`
+to start on the twelfth image, or `wlens --browse photos.zip` to open the
+thumbnail grid. ZIP, RAR, 7z, tar and common compressed tar formats are
+supported, including the CBZ, CBR, CB7 and CBT extensions. Images in
+subfolders are included and sorted by their full entry names, so
+`trip2/photo9.jpg` comes before `trip2/photo10.jpg` and `trip10/photo1.jpg`.
 
-When you first view a page or request its thumbnail, a background worker
-extracts all image pages in archive order. This lets solid archives share
-one decompression pass across pages. Extracted images are stored under
+When you first view an image or request its thumbnail, a background worker
+extracts the images in archive order. Solid archives need just one
+decompression pass. Extracted images are stored under
 `$XDG_CACHE_HOME/wlens/archives` (normally `~/.cache/wlens/archives`) with
 hashed names. Later sessions reuse them. Editing or replacing an archive
 creates a new cache directory. You can remove the archives cache while

@@ -241,8 +241,8 @@ mod tests {
     }
 
     #[test]
-    fn comics_list_and_extract_the_same_three_pages() {
-        let root = temp_dir("comics");
+    fn archives_list_and_extract_the_same_three_pages() {
+        let root = temp_dir("formats");
         for ext in ["cbz", "cb7", "cbr", "tar.gz"] {
             let archive = fixture(ext);
             let pages = list(&archive).unwrap();

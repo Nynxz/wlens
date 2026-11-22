@@ -156,7 +156,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn explicit_comic_expands_with_start_and_siblings() {
+    fn explicit_archive_expands_with_start_and_siblings() {
         let inputs = [PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pages.cbz")];
         for siblings in [false, true] {
             let (items, index) = gather(&Request {
