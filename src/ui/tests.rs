@@ -479,6 +479,28 @@ fn shortening_text() {
 }
 
 #[test]
+fn edge_clicks_allow_a_pan_but_controls_above_them_consume_drags() {
+    let ui = build(
+        r#"return {
+        { anchor = "top-left", width = 100, height = 100, on_click = "next", drag_through = true,
+          { width = 40, height = 40, text = ">", pass_through = true } },
+        { anchor = "top-left", width = 10, height = 10, on_click = "back" },
+    }"#,
+    );
+    let zone = ui.roots[0];
+    let icon = ui.nodes[zone].children[0];
+    for point in [ui.nodes[icon].rect.center(), (80.0, 80.0)] {
+        let hit = ui.hit(point);
+        assert_eq!(hit.clickable, Some(zone));
+        assert!(!hit.blocks_drag);
+    }
+    let control = ui.roots[1];
+    let hit = ui.hit(ui.nodes[control].rect.center());
+    assert_eq!(hit.clickable, Some(control));
+    assert!(hit.blocks_drag);
+}
+
+#[test]
 fn pass_through_elements_let_the_mouse_reach_what_is_below() {
     let ui = build(
         r##"return {
