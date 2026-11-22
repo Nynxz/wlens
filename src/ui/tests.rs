@@ -310,10 +310,10 @@ fn scroll_and_wrap() {
     for n in &mut ui.nodes {
         n.opacity = 1.0;
     }
-    assert!(ui.scroll_at((50.0, 50.0), -50.0));
+    assert!(ui.scroll_at((50.0, 50.0), ScrollInput::Pixels(-50.0)));
     ui.layout(win, 1.0, &Theme::default(), &mut Fixed);
     assert_eq!(node(&ui, "r3").0.y, 10.0);
-    assert!(ui.scroll_at((50.0, 50.0), -1000.0));
+    assert!(ui.scroll_at((50.0, 50.0), ScrollInput::Pixels(-1000.0)));
     ui.layout(win, 1.0, &Theme::default(), &mut Fixed);
     assert_eq!(node(&ui, "r10").0.y, 70.0); // last row's bottom at the box's bottom
 }
@@ -424,7 +424,7 @@ fn floating_max_height_and_wrapping_scroll() {
     }
     let chips = r(&ui, "chips");
     let before = r(&ui, "c5").y;
-    assert!(ui.scroll_at((chips.x + 5.0, chips.y + 5.0), -100.0));
+    assert!(ui.scroll_at((chips.x + 5.0, chips.y + 5.0), ScrollInput::Pixels(-100.0)));
     ui.layout(win, 1.0, &Theme::default(), &mut Fixed);
     assert_eq!(
         before - r(&ui, "c5").y,
@@ -520,7 +520,23 @@ fn short_menu_scrolls_to_last_clickable_command() {
     ui.layout(win, 1.0, &theme, &mut Fixed);
     let panel = ui.nodes[ui.roots[1]].children[0];
     let last = *ui.nodes[panel].children.last().unwrap();
-    assert!(ui.scroll_at(ui.nodes[panel].rect.center(), -2000.0));
+    let cursor = ui.nodes[panel].rect.center();
+    assert!(ui.scroll_at(cursor, ScrollInput::Wheel(-48.0)));
+    assert!(ui.scroll_at(cursor, ScrollInput::Wheel(-48.0)));
+    assert_eq!(ui.nodes[panel].scroll_y.shown, 0.0);
+    ui.animate(0.016, &theme, Some(cursor), true);
+    let first_frame = ui.nodes[panel].scroll_y.shown;
+    assert!(first_frame > 0.0 && first_frame < 96.0);
+    assert!(ui.scroll_at(cursor, ScrollInput::Wheel(8.0)));
+    ui.animate(0.016, &theme, Some(cursor), true);
+    assert!(ui.nodes[panel].scroll_y.shown < first_frame);
+    assert!(ui.scroll_at(cursor, ScrollInput::Pixels(-3.5)));
+    let offset = ui.nodes[panel].scroll_y;
+    assert_eq!(offset.shown, offset.target);
+    assert!(ui.scroll_at(cursor, ScrollInput::Wheel(-2000.0)));
+    for _ in 0..60 {
+        ui.animate(0.016, &theme, Some(cursor), true);
+    }
     ui.layout(win, 1.0, &theme, &mut Fixed);
     let point = ui.nodes[last].rect.center();
     assert!(win.contains(point));

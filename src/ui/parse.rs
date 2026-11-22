@@ -530,7 +530,7 @@ impl Node {
             priority: None,
             squeezed_out: false,
             fit_width: None,
-            scroll_y: 0.0,
+            scroll_y: ScrollOffset::default(),
             content_h: 0.0,
             clip: None,
             attach: None,

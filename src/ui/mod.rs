@@ -48,6 +48,25 @@ pub enum Align {
     End,
 }
 
+#[derive(Clone, Copy, Default)]
+struct ScrollOffset {
+    shown: f64,
+    target: f64,
+}
+
+impl ScrollOffset {
+    fn clamp(&mut self, max: f64) -> f64 {
+        self.target = self.target.clamp(0.0, max);
+        self.shown = self.shown.clamp(0.0, max);
+        self.shown
+    }
+}
+
+pub enum ScrollInput {
+    Wheel(f64),
+    Pixels(f64),
+}
+
 /// Whether a top-level element keeps the image/grid out of its space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reserve {
@@ -273,7 +292,7 @@ pub struct Node {
     /// priority hide, lowest first (e.g. file size before the counter).
     pub priority: Option<i32>,
     pub(super) squeezed_out: bool,
-    pub(super) scroll_y: f64,
+    scroll_y: ScrollOffset,
     pub(super) content_h: f64,
     /// Where this element may draw (set by scrolling ancestors).
     pub(super) clip: Option<Rect>,

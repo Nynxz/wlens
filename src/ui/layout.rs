@@ -357,6 +357,8 @@ impl Ui {
             self.arrange(c, Rect::new(x, y, w as f64, h as f64), scale);
         }
         if children.is_empty() {
+            self.nodes[i].content_h = 0.0;
+            self.nodes[i].scroll_y = ScrollOffset::default();
             return;
         }
 
@@ -405,8 +407,7 @@ impl Ui {
             let off = if scrolls {
                 let n = &mut self.nodes[i];
                 n.content_h = content + (n.rect.h - inner.h);
-                n.scroll_y = n.scroll_y.clamp(0.0, (content - inner.h).max(0.0));
-                n.scroll_y
+                n.scroll_y.clamp((content - inner.h).max(0.0))
             } else {
                 0.0
             };
@@ -506,8 +507,7 @@ impl Ui {
             let content = fixed + gaps;
             let n = &mut self.nodes[i];
             n.content_h = content + (n.rect.h - inner.h);
-            n.scroll_y = n.scroll_y.clamp(0.0, (content - main_avail).max(0.0));
-            n.scroll_y
+            n.scroll_y.clamp((content - main_avail).max(0.0))
         } else {
             0.0
         };
