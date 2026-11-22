@@ -73,9 +73,8 @@ return function(o)
     id = "caption", anchor = "bottom", y = 16, padding = { 4, 6 }, gap = 6, show = "hover",
     reserve = "gallery", -- the grid scrolls under it but its last row clears it
     w.menu_button { radius = inner },
-    w.back_button { radius = inner },
+    w.navigation_button { radius = inner },
     w.refresh_button { radius = inner },
-    w.gallery_button { radius = inner },
     w.filename { radius = inner },
     w.play_button { radius = inner },
     w.scrubber { width = 220, inset = 6, extra = { id = "caption_scrubber" } },

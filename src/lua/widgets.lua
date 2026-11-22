@@ -795,11 +795,11 @@ function W.button(icon, action, tip, o)
   }, o)
 end
 
--- Shown only inside a level (a folder, an album…): go back up.
+-- Back steps from an image to its grid, then from that grid to its parent.
 function W.back_button(o)
-  return W.button(W.icons.back, "back", "Parent folder", E({
+  return W.button(W.icons.back, "back", "Back", E({
     id = "back_button",
-    show = function(img) return wlens.depth() > 0 and (not img or img.mode == "gallery" or img.count == 0) end,
+    show = function(img) return wlens.depth() > 0 or (img ~= nil and img.mode ~= "gallery" and img.count > 0) end,
   }, o or {}))
 end
 
@@ -830,6 +830,16 @@ function W.gallery_button(o)
     id = "gallery_button",
     show = function(img) return img and img.mode ~= "gallery" and img.count > 0 end,
   }, o or {}))
+end
+
+-- Reserve the Back button’s space even in the root grid.
+function W.navigation_button(o)
+  local size = (o and o.font_size) or W.style.icon_size
+  local button = E({ anchor = "center", width = "100%", height = "100%", anim = 0 }, o or {})
+  return {
+    { width = size + 14, height = size + 6 },
+    W.back_button(button),
+  }
 end
 
 -- Open the keybindings sheet.
@@ -921,7 +931,6 @@ W.default_menu = {
   { "Actual size", "zoom actual" },
   { "Fullscreen", "fullscreen" },
   "-",
-  { "Thumbnails", "gallery open" },
   { "Toggle flat view", "gallery flat" },
   { "Back", "back" },
   { "Refresh", "refresh" },
