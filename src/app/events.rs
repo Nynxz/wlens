@@ -194,7 +194,12 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                if let Some(i) = self.press.as_ref().and_then(|p| p.slider) {
+                if let Some(i) = self
+                    .press
+                    .as_ref()
+                    .filter(|p| p.slider)
+                    .and_then(|p| p.target)
+                {
                     self.press.as_mut().unwrap().dragged = true;
                     self.slide(event_loop, i, position.x);
                 } else if let Some(press) = &mut self.press {
@@ -266,7 +271,8 @@ impl ApplicationHandler<UserEvent> for App {
                         self.press = Some(Press {
                             at,
                             dragged: false,
-                            slider,
+                            target: hit.clickable,
+                            slider: slider.is_some(),
                             on_ui: hit.over_ui,
                         });
                         if let Some(i) = slider {
@@ -277,7 +283,8 @@ impl ApplicationHandler<UserEvent> for App {
                 (MouseButton::Left, ElementState::Released) => {
                     if let Some(p) = self.press.take()
                         && !p.dragged
-                        && p.slider.is_none()
+                        && !p.slider
+                        && self.ui.hit((p.at.x, p.at.y)).clickable == p.target
                     {
                         self.click(event_loop, p.at);
                     }

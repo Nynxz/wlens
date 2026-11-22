@@ -176,7 +176,7 @@ impl Ui {
         let gap = n.gap * scale;
         let mut count = 0;
         for &c in &n.children {
-            if self.collapsed(c) || self.nodes[c].floating {
+            if (!n.stack && self.collapsed(c)) || self.nodes[c].floating {
                 continue;
             }
             let cn = &self.nodes[c];
@@ -190,6 +190,10 @@ impl Ui {
                 Size::Percent(_) => 0.0,
                 Size::Auto => cn.measured.1,
             };
+            if n.stack {
+                content = (content.0.max(cw), content.1.max(ch));
+                continue;
+            }
             match n.dir {
                 Dir::Row => content = (content.0 + cw, content.1.max(ch)),
                 Dir::Column => content = (content.0.max(cw), content.1 + ch),
@@ -313,7 +317,7 @@ impl Ui {
             Dir::Row => (inner.w, inner.h),
             Dir::Column => (inner.h, inner.w),
         };
-        let (dir, align, justify) = (n.dir, n.align, n.justify);
+        let (dir, align, justify, stack) = (n.dir, n.align, n.justify, n.stack);
         let (children, gone): (Vec<usize>, Vec<usize>) = n
             .children
             .clone()
@@ -323,8 +327,9 @@ impl Ui {
             self.clear_rects(c);
         }
         // Anchored children float over this element's inner box.
-        let (floating, children): (Vec<usize>, Vec<usize>) =
-            children.into_iter().partition(|&c| self.nodes[c].floating);
+        let (floating, children): (Vec<usize>, Vec<usize>) = children
+            .into_iter()
+            .partition(|&c| stack || self.nodes[c].floating);
         for c in floating {
             let cn = &self.nodes[c];
             let w = resolve(cn.width, cn.measured.0, inner.w as f32, scale);
@@ -344,15 +349,17 @@ impl Ui {
             };
             // Too big for its area (a small window)? Keep it on screen.
             let win = self.win;
-            let x = place(cn.anchor.0, cn.x, w, inner.x, inner.w)
-                .min(win.x + win.w - w as f64)
-                .max(win.x);
-            let y = place(cn.anchor.1, cn.y, h, inner.y, inner.h)
-                .min(win.y + win.h - h as f64)
-                .max(win.y);
+            let mut x = place(cn.anchor.0, cn.x, w, inner.x, inner.w);
+            let mut y = place(cn.anchor.1, cn.y, h, inner.y, inner.h);
+            if cn.floating {
+                x = x.min(win.x + win.w - w as f64).max(win.x);
+                y = y.min(win.y + win.h - h as f64).max(win.y);
+            }
             self.arrange(c, Rect::new(x, y, w as f64, h as f64), scale);
         }
         if children.is_empty() {
+            self.nodes[i].max_scroll_y = 0.0;
+            self.nodes[i].scroll_y = 0.0;
             return;
         }
 
@@ -400,8 +407,8 @@ impl Ui {
             let (at, content) = place(&sizes);
             let off = if scrolls {
                 let n = &mut self.nodes[i];
-                n.content_h = content;
-                n.scroll_y = n.scroll_y.clamp(0.0, (content - inner.h).max(0.0));
+                n.max_scroll_y = (content - inner.h).max(0.0);
+                n.scroll_y = n.scroll_y.clamp(0.0, n.max_scroll_y);
                 n.scroll_y
             } else {
                 0.0
@@ -492,17 +499,21 @@ impl Ui {
         };
         let gaps = gap * (children.len() - 1) as f64;
         let leftover = (main_avail - fixed - gaps).max(0.0);
-        let cursor = match (growers, justify) {
+        let offset = |alignment| match (growers, alignment) {
             (0, Align::Center) => leftover / 2.0,
             (0, Align::End) => leftover,
             _ => 0.0,
         };
+        let mut cursor = offset(justify);
+        if let Some(s) = &self.nodes[i].selected {
+            cursor += (offset(s.justify) - cursor) * s.progress;
+        }
         let scroll_y = if scrolls {
             // Keep the offset within the content (it may have shrunk).
             let content = fixed + gaps;
             let n = &mut self.nodes[i];
-            n.content_h = content;
-            n.scroll_y = n.scroll_y.clamp(0.0, (content - main_avail).max(0.0));
+            n.max_scroll_y = (content - main_avail).max(0.0);
+            n.scroll_y = n.scroll_y.clamp(0.0, n.max_scroll_y);
             n.scroll_y
         } else {
             0.0

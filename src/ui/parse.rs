@@ -154,6 +154,7 @@ impl Ui {
 
         let mut n = Node::new(None);
         let mut hover: Option<Table> = None;
+        let mut selected: Option<Table> = None;
         let mut children = Vec::new();
         for pair in t.pairs::<LuaValue, LuaValue>() {
             let (k, v) = pair?;
@@ -243,6 +244,11 @@ impl Ui {
                     LuaValue::Table(h) => hover = Some(h),
                     _ => return Err(err("'hover' must be a table of style keys")),
                 },
+                "selected" => match v {
+                    LuaValue::Table(t) => selected = Some(t),
+                    _ => return Err(err("'selected' must be a table with a 'when' function")),
+                },
+                "stack" => n.stack = matches!(v, LuaValue::Boolean(true)),
                 "text" => {
                     n.text = Some(match v {
                         LuaValue::Function(f) => TextSrc::Func(f),
@@ -425,6 +431,26 @@ impl Ui {
                 _ => return Err(err(format!("unknown key '{key}'"))),
             }
         }
+        if let Some(t) = selected {
+            let when = t.get::<Function>("when")?;
+            let mut style = n.style.clone();
+            let mut justify = n.justify;
+            for pair in t.pairs::<String, LuaValue>() {
+                let (k, v) = pair?;
+                if k == "justify" {
+                    justify = as_align(&v, &k)?;
+                } else if k != "when" && !style_key(&mut style, &k, &v)? {
+                    return Err(err(format!("unknown selected style key '{k}'")));
+                }
+            }
+            n.selected = Some(Box::new(SelectedStyle {
+                when,
+                style,
+                justify,
+                active: None,
+                progress: 0.0,
+            }));
+        }
         if let Some(h) = hover {
             let mut hs = n.style.clone();
             for pair in h.pairs::<String, LuaValue>() {
@@ -491,6 +517,7 @@ impl Node {
             text_align: Align::Center,
             style: BoxStyle::default(),
             hover: None,
+            selected: None,
             text,
             font: None,
             font_size: None,
@@ -524,6 +551,7 @@ impl Node {
             layer_top: false,
             floating: false,
             wrap: false,
+            stack: false,
             scroll: false,
             max_height: None,
             shrink: false,
@@ -531,7 +559,7 @@ impl Node {
             squeezed_out: false,
             fit_width: None,
             scroll_y: 0.0,
-            content_h: 0.0,
+            max_scroll_y: 0.0,
             clip: None,
             attach: None,
             attach_align: Align::Center,

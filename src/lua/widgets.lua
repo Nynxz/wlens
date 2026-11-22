@@ -989,19 +989,20 @@ local function opt_set(key, value) wlens.exec("set " .. key .. " " .. tostring(v
 function W.toggle(key, o)
   o = o or {}
   local st = W.style
-  local on_v, off_v = o.on == nil and true or o.on, o.off == nil and false or o.off
+  local on_v, off_v = o.on, o.off
+  if on_v == nil then on_v = true end
+  if off_v == nil then off_v = false end
   local function is_on() return wlens.opt[key] == on_v end
-  local function switch(on)
-    return {
-      width = 38, height = 22, padding = 3, radius = 11, dir = "row",
-      justify = on and "end" or "start",
-      background = on and st.accent or wlens.color(st.fg, 0.18),
-      show = function() return is_on() == on end,
-      on_click = function() opt_set(key, on and off_v or on_v) end,
-      { width = 16, height = 16, radius = 8, background = on and st.bg or st.fg },
-    }
-  end
-  return { dir = "row", switch(true), switch(false) }
+  return {
+    width = 38, height = 22, padding = 3, radius = 11,
+    background = wlens.color(st.fg, 0.18),
+    selected = { when = is_on, background = st.accent, justify = "end" },
+    on_click = function()
+      if is_on() then opt_set(key, off_v) else opt_set(key, on_v) end
+    end,
+    { width = 16, height = 16, radius = 8, pass_through = true,
+      background = st.fg, selected = { when = is_on, background = st.bg } },
+  }
 end
 
 -- Segmented buttons for an option with a few values:
@@ -1013,14 +1014,12 @@ function W.choice(key, options, o)
   for _, opt in ipairs(options) do
     local label, value = opt[1], opt[2]
     local function cur() return tostring(wlens.opt[key]) == tostring(value) end
-    -- Two variants, so the selected one can look different.
-    row[#row + 1] = { text = label, padding = { 4, 10 }, radius = math.max(2, st.button_radius - 2),
-                      background = st.accent, color = st.bg, weight = 600,
-                      show = function() return cur() end }
-    row[#row + 1] = { text = label, padding = { 4, 10 }, radius = math.max(2, st.button_radius - 2),
-                      color = st.fg, hover = { background = wlens.color(st.fg, 0.1) },
-                      show = function() return not cur() end,
-                      on_click = function() opt_set(key, value) end }
+    row[#row + 1] = {
+      text = label, padding = { 4, 10 }, radius = math.max(2, st.button_radius - 2),
+      color = st.fg, hover = { background = wlens.color(st.fg, 0.1) },
+      selected = { when = cur, background = st.accent, color = st.bg },
+      on_click = function() if not cur() then opt_set(key, value) end end,
+    }
   end
   return E(row, o or {})
 end
@@ -1091,22 +1090,22 @@ function W.settings(o)
   local tabs = o.tabs or W.default_settings_tabs()
   local current = 1
   local tabbar = { dir = "row", gap = 4, width = "100%" }
-  local pages = { dir = "column", width = "100%", align = "start" }
+  local pages = { stack = true, width = "100%" }
   for i, tab in ipairs(tabs) do
     local function active() return current == i end
     local function select() current = i end
-    tabbar[#tabbar + 1] = { text = tab[1], padding = { 6, 12 }, radius = st.button_radius,
-                            background = wlens.color(st.accent, 0.18), color = st.accent, weight = 600,
-                            show = active }
-    tabbar[#tabbar + 1] = { text = tab[1], padding = { 6, 12 }, radius = st.button_radius, color = st.dim,
-                            hover = { background = st.hover, color = st.fg },
-                            show = function() return not active() end, on_click = select }
-    local page = { dir = "column", width = "100%", gap = 2, align = "start", show = active }
+    tabbar[#tabbar + 1] = {
+      text = tab[1], padding = { 6, 12 }, radius = st.button_radius, color = st.dim,
+      hover = { background = st.hover, color = st.fg },
+      selected = { when = active, background = wlens.color(st.accent, 0.18), color = st.accent },
+      on_click = select,
+    }
+    local page = { dir = "column", width = "100%", gap = 2, align = "start", show = active, anim = 0 }
     for _, row in ipairs(tab[2]) do page[#page + 1] = row end
     pages[#pages + 1] = page
   end
   local panel = {
-    dir = "column", gap = 14, padding = { 18, 22 }, width = o.width or 520, align = "start",
+    dir = "column", gap = 14, padding = { 18, 22 }, width = o.width or 520, align = "start", max_height = "100%", scroll = true,
     background = st.panel, radius = st.radius + 4,
     border = { width = 1, color = st.panel_border },
     shadow = { size = 30, color = "#000000aa", y = 10 },

@@ -116,8 +116,9 @@ struct Transition {
 struct Press {
     at: PhysicalPosition<f64>,
     dragged: bool,
-    /// Pressed on a slider: drags set its value instead of panning.
-    slider: Option<usize>,
+    target: Option<usize>,
+    /// Slider drags set the value instead of panning.
+    slider: bool,
     /// Pressed on the UI (a bar, a sidebar, a filmstrip): dragging from there
     /// never pans the image or scrolls the grid.
     on_ui: bool,
