@@ -60,6 +60,11 @@ impl App {
                 if k.starts_with("gallery.") {
                     self.gallery.requested = None;
                 }
+                if k == "gallery.flat" {
+                    self.update_browser_view();
+                    let flat = self.script.shared.borrow().settings.flat;
+                    self.toast(if flat { "Flat view" } else { "Folder view" });
+                }
                 if k == "wrap" {
                     let on = self.script.shared.borrow().settings.wrap;
                     self.toast(if on {
@@ -112,6 +117,12 @@ impl App {
                 self.sync_visibility();
             }
             Command::Copy(what) => self.copy(&what),
+            Command::Gallery(action, _) if action == "flat" => {
+                return self.exec(
+                    event_loop,
+                    Command::Set("gallery.flat".into(), "toggle".into()),
+                );
+            }
             Command::Gallery(action, amount) => self.gallery_command(&action, amount),
             Command::Back => {
                 // One step at a time: image view -> this level's grid -> parent level.

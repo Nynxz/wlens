@@ -72,7 +72,6 @@ impl App {
             // Image view -> grid; grid -> the selected image. A selected
             // folder / gallery has no image view, so the grid stays (opening
             // it is `open` / Return / a click).
-            "flat" => self.toggle_flat(),
             "toggle" if self.gallery.active => {
                 if self.items.get(self.index).is_some_and(|i| !i.container) {
                     self.set_gallery(false);

@@ -803,9 +803,9 @@ function W.back_button(o)
   }, o or {}))
 end
 
--- The current level's title ("Holiday 2026"), hidden at the top level.
+-- The browsing location also has a name when its grid is empty.
 function W.level(o)
-  return W.label("{level}", E({
+  return W.label(function() return wlens.level() end, E({
     color = W.style.dim, max_width = 220,
     -- From an image: click to see this level's grid (it never leaves the level).
     on_click = function()
@@ -815,7 +815,7 @@ function W.level(o)
     cursor = function(img) return (img and img.mode ~= "gallery") and "pointer" or "default" end,
     tooltip = "Thumbnails", radius = W.style.button_radius, padding = { 3, 8 },
     hover = { background = W.style.hover, color = W.style.fg },
-    show = function(img) return img ~= nil and img.level ~= nil end,
+    show = function() return wlens.level() ~= nil end,
   }, o or {}))
 end
 
@@ -1082,6 +1082,7 @@ function W.default_settings_tabs()
   } },
   { "Gallery", {
     W.setting("Thumbnails", W.choice("gallery.fit", { { "Crop", "cover" }, { "Fit", "contain" } })),
+    W.setting("Flat view", W.toggle("gallery.flat"), "Include media from subfolders"),
     W.setting("Names", W.toggle("gallery.labels"), "Under each thumbnail"),
     W.setting("Size", W.range("gallery.size", 96, 400, { step = 8 })),
   } },

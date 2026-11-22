@@ -2,7 +2,7 @@
 
 ## The thumbnail grid
 
-`Return` (or the grid button) switches between the image and a grid of
+`Return` switches between the image and a grid of
 thumbnails. Click or `Return` opens the selected item; arrows/`hjkl` move;
 scroll or drag to move through it; `+`/`-` or `Ctrl+scroll` resize; `c`
 switches crop/fit. Style it with the `gallery.*` [theme keys](theming.md).
@@ -33,7 +33,7 @@ wlens.set_items {
   the back button) returns with the previous selection and scroll restored.
 - `Esc` climbs out one step at a time: image → its grid → parent level → quit.
 - In image view, next/prev skip containers; choosing one opens it.
-- `wlens.depth()` is how deep you are; `{level}` in UI text is the title.
+- `wlens.depth()` gives the depth. `wlens.level()` gives the browsing location’s title even in an empty grid.
 - `pop_items()` leaves a level in order with other list changes made in the
   same callback (useful for rebuilding both levels on refresh).
 
@@ -48,7 +48,8 @@ subfolders in a single grid, and press it again to restore the folder view. Open
 forward history.
 
 Open an archive tile or run `wlens photos.zip` to navigate its folders one
-level at a time. Use `wlens --flat photos.zip` to read all images in natural
+level at a time. The bottom bar shows the archive or directory name at its root.
+Flat view applies across folders, including those revisited with Back or Forward. Use `wlens --flat photos.zip` to read all images in natural
 page order, or `wlens --flat ~/Pictures` for a recursive media list on disk. Videos and archives embedded inside an archive
 are skipped.
 

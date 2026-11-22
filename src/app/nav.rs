@@ -128,17 +128,28 @@ impl App {
 
     pub(super) fn apply_op(&mut self, op: ItemsOp) {
         match op {
-            ItemsOp::Set(list, start) => self.apply_items(list, false, start),
+            ItemsOp::Set(list, start) => {
+                if self.stack.is_empty() {
+                    self.script.shared.borrow_mut().level = None;
+                }
+                self.apply_items(list, false, start);
+            }
             ItemsOp::Add(list) => self.apply_items(list, true, None),
             ItemsOp::Push(list, start, title) => self.push_level(list, start, title),
             ItemsOp::Pop => {
                 self.back();
             }
             ItemsOp::Directory(path) => {
+                if self.stack.is_empty() {
+                    self.script.shared.borrow_mut().level =
+                        Some(crate::files::location_name(&path));
+                }
                 self.browser = Some(Browser {
                     location: BrowserLocation::Directory(path),
                     flat: false,
-                })
+                });
+                self.update_browser_view();
+                self.update_info();
             }
             ItemsOp::More(more) => {
                 self.script.shared.borrow_mut().more = more;
@@ -157,7 +168,7 @@ impl App {
     ) {
         let parent = self.take_level();
         self.stack.push(parent);
-        self.level_title = title;
+        self.script.shared.borrow_mut().level = title;
         self.gallery.scroll = 0.0;
         self.gallery.active = true;
         self.apply_items(items, false, start);
@@ -167,12 +178,13 @@ impl App {
     }
 
     fn take_level(&mut self) -> Level {
+        let mut sh = self.script.shared.borrow_mut();
         Level {
             items: std::mem::take(&mut self.items),
             index: self.index,
             scroll: self.gallery.scroll,
-            title: self.level_title.take(),
-            more: std::mem::take(&mut self.script.shared.borrow_mut().more),
+            title: sh.level.take(),
+            more: std::mem::take(&mut sh.more),
             browser: self.browser.take(),
             forward_image: std::mem::take(&mut self.forward_image),
         }
@@ -208,7 +220,7 @@ impl App {
         self.forward_image = level.forward_image;
         self.items = level.items;
         self.index = level.index.min(self.items.len().saturating_sub(1));
-        self.level_title = level.title;
+        self.script.shared.borrow_mut().level = level.title;
         {
             let mut sh = self.script.shared.borrow_mut();
             sh.items = self.items.clone();
@@ -218,6 +230,7 @@ impl App {
         self.gallery.active = true;
         self.gallery.scroll = level.scroll;
         self.gallery.shown = level.scroll;
+        self.update_browser_view();
         self.gallery.requested = None;
         self.sync();
         self.script.emit("select");
@@ -230,28 +243,36 @@ impl App {
         folder: crate::model::archive_folder::ArchiveFolder,
         title: Option<String>,
     ) {
-        self.push_level(folder.items(), None, title);
+        let flat = self.script.shared.borrow().settings.flat;
+        let items = if flat {
+            folder.flat_items()
+        } else {
+            folder.items()
+        };
+        self.push_level(items, None, title);
         self.browser = Some(Browser {
             location: BrowserLocation::Archive(folder),
-            flat: false,
+            flat,
         });
     }
 
-    pub(super) fn toggle_flat(&mut self) {
-        let Some(mut browser) = self.browser.clone() else {
-            self.toast("Open a folder or archive to use flat view");
+    /// History stores the list as last displayed. Rebuild it only when the
+    /// current preference differs, keeping both navigation stacks intact.
+    pub(super) fn update_browser_view(&mut self) {
+        let flat = self.script.shared.borrow().settings.flat;
+        let Some(browser) = self.browser.as_mut() else {
             return;
         };
-        browser.flat = !browser.flat;
+        if browser.flat == flat {
+            return;
+        }
         let result = match &browser.location {
-            BrowserLocation::Archive(folder) => Ok(if browser.flat {
+            BrowserLocation::Archive(folder) => Ok(if flat {
                 folder.flat_items()
             } else {
                 folder.items()
             }),
-            BrowserLocation::Directory(dir) if browser.flat => {
-                Ok(crate::files::flat_directory(dir))
-            }
+            BrowserLocation::Directory(dir) if flat => Ok(crate::files::flat_directory(dir)),
             BrowserLocation::Directory(dir) => self.script.directory_items(dir),
         };
         let items = match result {
@@ -262,33 +283,21 @@ impl App {
             }
         };
         let selected = self.items.get(self.index);
-        let index = selected.and_then(|old| {
-            items.iter().position(|item| {
-                if item.src == old.src || (old.container && old.thumb.as_ref() == Some(&item.src)) {
-                    return true;
-                }
-                match (&old.src, &item.src) {
-                    (Source::Archive { entry, .. }, _) => item
-                        .archive_folder
-                        .as_ref()
-                        .is_some_and(|f| f.contains(entry)),
-                    (Source::Path(path), Source::Path(folder)) if item.container => {
-                        path.starts_with(folder)
-                    }
-                    _ => false,
-                }
-            })
-        });
+        let index = selected.and_then(|old| matching_browser_item(old, &items));
+        self.forward_image &= selected
+            .zip(index.and_then(|i| items.get(i)))
+            .is_some_and(|(old, new)| old.src == new.src && !new.container);
+        browser.flat = flat;
+        self.items = items;
+        self.index = index.unwrap_or(0);
+        self.script.shared.borrow_mut().items = self.items.clone();
         self.gallery.active = true;
+        self.gallery.requested = None;
         self.gallery.scroll = 0.0;
-        self.apply_items(items, false, index);
+        self.ensure_selection_visible();
         self.gallery.shown = self.gallery.scroll;
-        self.toast(if browser.flat {
-            "Flat view"
-        } else {
-            "Folder view"
-        });
-        self.browser = Some(browser);
+        self.sync();
+        self.redraw();
     }
 
     /// Enter the current container, or view the current image.
@@ -323,5 +332,60 @@ impl App {
             None => self.toast("Nothing to open"),
         }
         self.drain_queue(event_loop);
+    }
+}
+
+/// Prefer the original item or its cover. A deeper file maps to the folder
+/// containing it when switching back to the hierarchical listing.
+fn matching_browser_item(old: &Item, items: &[Item]) -> Option<usize> {
+    let contains = |folder: &Item, file: &Item| {
+        folder.container
+            && !file.container
+            && match (&folder.src, &file.src) {
+                (Source::Path(dir), Source::Path(path)) => path.starts_with(dir),
+                (
+                    Source::Archive { archive, .. },
+                    Source::Archive {
+                        archive: other,
+                        entry,
+                    },
+                ) => {
+                    archive == other
+                        && folder
+                            .archive_folder
+                            .as_ref()
+                            .is_some_and(|f| f.contains(entry))
+                }
+                _ => false,
+            }
+    };
+    items
+        .iter()
+        .position(|it| it.src == old.src || (old.container && old.thumb.as_ref() == Some(&it.src)))
+        .or_else(|| {
+            items
+                .iter()
+                .position(|it| contains(old, it) || contains(it, old))
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flat_history_selection_follows_descendants_and_prefers_the_cover() {
+        let file = |path: &str| Item::new(Source::Path(path.into()));
+        let mut trip = file("/album/trip");
+        trip.container = true;
+        let images = [
+            file("/album/trip2/a.png"),
+            file("/album/trip/day/a.png"),
+            file("/album/trip/b.png"),
+        ];
+        assert_eq!(matching_browser_item(&trip, &images), Some(1));
+        trip.thumb = Some(images[2].src.clone());
+        assert_eq!(matching_browser_item(&trip, &images), Some(2));
+        assert_eq!(matching_browser_item(&images[1], &[trip]), Some(0));
     }
 }

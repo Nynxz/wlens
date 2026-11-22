@@ -49,6 +49,7 @@ impl ApplicationHandler<UserEvent> for App {
         self.window = Some(window);
 
         self.layout_ui();
+        self.update_browser_view();
         self.sync();
         self.script.emit("start");
         self.drain_queue(event_loop);

@@ -249,6 +249,7 @@ pub struct Shared {
     pub pending_items: Vec<ItemsOp>,
     /// How many levels deep we are (mirrored from the app for `wlens.depth()`).
     pub depth: usize,
+    pub level: Option<String>,
     /// `wlens.fetch` requests waiting to be handed to the loader.
     pub fetch_queue: Vec<(u64, crate::io::remote::Request)>,
     pub fetch_callbacks: HashMap<u64, Function>,

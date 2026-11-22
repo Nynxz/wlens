@@ -267,6 +267,12 @@ impl Script {
             lua.create_function(move |_, ()| Ok(sh.borrow().depth))?,
         )?;
 
+        let sh = shared.clone();
+        w.set(
+            "level",
+            lua.create_function(move |_, ()| Ok(sh.borrow().level.clone()))?,
+        )?;
+
         // wlens.list_dir(path) -> { {name, path, dir = bool, image = bool}, ... } sorted by name
         w.set(
             "list_dir",

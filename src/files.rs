@@ -39,6 +39,20 @@ pub fn natural_cmp(left: &str, right: &str) -> Ordering {
     a.len().cmp(&b.len()).then_with(|| left.cmp(right))
 }
 
+pub fn location_name(path: &Path) -> String {
+    let resolved;
+    let path = if path.file_name().is_none() {
+        resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+        resolved.as_path()
+    } else {
+        path
+    };
+    path.file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// What the command line asked for.
 pub struct Request<'a> {
     pub inputs: &'a [PathBuf],

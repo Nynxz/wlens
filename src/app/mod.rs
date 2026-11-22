@@ -149,6 +149,7 @@ pub enum BrowserLocation {
 #[derive(Clone)]
 pub struct Browser {
     pub location: BrowserLocation,
+    /// Layout of the cached item list at this history level.
     pub flat: bool,
 }
 
@@ -204,7 +205,6 @@ pub struct App {
     forward_levels: Vec<Level>,
     pub browser: Option<Browser>,
     forward_image: bool,
-    level_title: Option<String>,
     /// (depth, item count) for which `end_reached` already fired.
     end_fired: Option<(usize, usize)>,
     /// Tried to step past the end while more was loading: step once it arrives.
@@ -294,7 +294,6 @@ impl App {
             forward_levels: Vec::new(),
             browser: None,
             forward_image: false,
-            level_title: None,
             end_fired: None,
             pending_advance: false,
             anim_paused: false,

@@ -75,6 +75,7 @@ return function(o)
     w.menu_button { radius = inner },
     w.navigation_button { radius = inner },
     w.refresh_button { radius = inner },
+    w.level { radius = inner },
     w.filename { radius = inner },
     w.play_button { radius = inner },
     w.scrubber { width = 220, inset = 6, extra = { id = "caption_scrubber" } },

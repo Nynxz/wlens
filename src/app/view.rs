@@ -200,7 +200,7 @@ impl App {
                 meta: item.meta.clone(),
                 loading,
                 depth: self.stack.len(),
-                level: self.level_title.clone(),
+                level: self.script.shared.borrow().level.clone(),
                 video,
                 position,
                 duration,

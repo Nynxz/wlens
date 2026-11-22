@@ -97,6 +97,9 @@ impl App {
             };
             self.toast(&format!("Script error: {line}{more}"));
         }
+        if settings_dirty {
+            self.update_browser_view();
+        }
         if settings_dirty && self.renderer.is_some() {
             // Lua changed settings directly: re-fit, re-query thumbnails, refresh text.
             self.gallery.requested = None;
