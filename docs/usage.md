@@ -4,7 +4,8 @@
 wlens [OPTIONS] [FILES|DIRS|URLS|-]...
 ```
 
-With no arguments wlens opens the images in the current directory. `-`
+With no arguments wlens opens the images in the current directory. Passing a
+directory opens its folder browser. Use `-r` for a flat recursive image list. `-`
 reads paths or URLs from stdin, one per line. `http(s)://` arguments are
 downloaded in the background and cached.
 
@@ -12,7 +13,7 @@ downloaded in the background and cached.
 
 `wlens photos.zip` opens the first image. Use `wlens -n 12 photos.zip`
 to start on the twelfth image, or `wlens --browse photos.zip` to open the
-thumbnail grid. ZIP, RAR, 7z, tar and common compressed tar formats are
+folder browser. ZIP, RAR, 7z, tar and common compressed tar formats are
 supported, including the CBZ, CBR, CB7 and CBT extensions. Images in
 subfolders are included and sorted by their full entry names, so
 `trip2/photo9.jpg` comes before `trip2/photo10.jpg` and `trip10/photo1.jpg`.

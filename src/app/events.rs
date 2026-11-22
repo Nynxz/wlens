@@ -101,7 +101,7 @@ impl ApplicationHandler<UserEvent> for App {
                         Ok(pages) => {
                             let title = self.items.get(self.index).map(Item::name);
                             self.push_level(
-                                pages.into_iter().map(Item::new).collect(),
+                                crate::model::archive_folder::ArchiveFolder::root(pages).items(),
                                 None,
                                 title,
                             );

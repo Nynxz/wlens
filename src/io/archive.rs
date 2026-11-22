@@ -39,11 +39,15 @@ pub fn is_archive(path: &Path) -> bool {
 }
 
 pub fn list(path: &Path) -> Result<Vec<Source>> {
+    list_entries(path, false)
+}
+
+pub fn list_entries(path: &Path, include_folders: bool) -> Result<Vec<Source>> {
     let archive = fs::canonicalize(path)?;
-    let mut names = walk(open_archive(&archive)?, None, &LIMITS)
+    let mut names = walk_entries(open_archive(&archive)?, None, &LIMITS, include_folders)
         .with_context(|| format!("listing {}", archive.display()))?;
     ensure!(
-        !names.is_empty(),
+        include_folders || !names.is_empty(),
         "{} contains no image pages",
         archive.display()
     );
@@ -68,12 +72,15 @@ fn open_archive(path: &Path) -> Result<File> {
 
 fn page_name(name: &str) -> bool {
     let path = Path::new(name);
-    crate::files::is_image(path)
-        && path.components().all(|c| match c {
-            Component::Normal(n) => n != "__MACOSX" && !n.as_encoded_bytes().starts_with(b"._"),
-            Component::CurDir => true,
-            _ => false,
-        })
+    crate::files::is_image(path) && safe_entry(path)
+}
+
+fn safe_entry(path: &Path) -> bool {
+    path.components().all(|c| match c {
+        Component::Normal(n) => n != "__MACOSX" && !n.as_encoded_bytes().starts_with(b"._"),
+        Component::CurDir => true,
+        _ => false,
+    })
 }
 
 fn filename(entry: &str) -> Result<String> {
@@ -162,17 +169,34 @@ fn materialize_in(archive: &Path, entry: &str, root: &Path) -> Result<PathBuf> {
 }
 
 fn walk(file: File, output: Option<&Path>, limits: &Limits) -> Result<Vec<String>> {
+    walk_entries(file, output, limits, false)
+}
+
+fn walk_entries(
+    file: File,
+    output: Option<&Path>,
+    limits: &Limits,
+    include_folders: bool,
+) -> Result<Vec<String>> {
     let mut iter = Reader::new(file)?;
     let mut names = HashSet::new();
     let mut headers = 0;
     let mut total = 0;
-    while let Some((name, regular, declared)) = iter.header()? {
+    while let Some((name, kind, declared)) = iter.header()? {
         headers += 1;
         ensure!(headers <= limits.entries, "too many archive entries");
         let remaining = limits.total - total;
         ensure!(declared <= remaining, "archive exceeds total size limit");
         total += declared;
-        if !regular || !page_name(&name) {
+        let path = Path::new(&name);
+        if include_folders
+            && kind == libc::S_IFDIR
+            && path.file_name().is_some()
+            && safe_entry(path)
+        {
+            names.insert(format!("{}/", name.trim_end_matches('/')));
+        }
+        if kind != libc::S_IFREG || !page_name(&name) {
             continue;
         }
         ensure!(

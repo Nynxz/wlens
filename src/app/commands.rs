@@ -116,13 +116,17 @@ impl App {
             Command::Back => {
                 // One step at a time: image view -> this level's grid -> parent level.
                 if !self.gallery.active
-                    && (!self.stack.is_empty() || self.items.iter().any(|i| i.container))
+                    && (self.from_gallery
+                        || !self.stack.is_empty()
+                        || self.items.iter().any(|i| i.container))
                 {
                     self.set_gallery(true);
+                    self.forward_image = true;
                 } else if !self.back() {
                     self.toast("Already at the top");
                 }
             }
+            Command::Forward => self.forward(),
             Command::Open => self.pending_open = true,
             Command::Video(action, arg) => {
                 #[cfg(feature = "video")]

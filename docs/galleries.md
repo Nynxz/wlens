@@ -39,11 +39,16 @@ wlens.set_items {
 
 ## Folders
 
-`wlens --browse ~/Pictures`, or `wlens.widgets.browse(path)`: subfolders come
-first as tiles (covered by their first image, with an image count), then the
-folder's images. Local archives also appear as tiles. Opening an archive
-lists its image pages in a new grid. Back returns to the folder with the
-archive still selected. Browsing the parent folder leaves its archives packed.
+`wlens ~/Pictures` opens the folder browser. Folders and archives appear first,
+then images and supported videos. Return opens the selected tile. Alt+Left
+and Alt+Right, or the mouse's back and forward buttons, revisit a folder with
+its selection and scroll position. Opening a different folder starts a new
+forward history.
+
+Open an archive tile, or use `wlens --browse photos.zip`, to navigate its
+folders one level at a time. Opening `wlens photos.zip` directly still reads all
+images in natural page order. Videos and archives embedded inside an archive
+are skipped.
 
 ## Items
 

@@ -97,12 +97,27 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let (mut items, mut start) = files::gather(&files::Request {
-        inputs: &cli.files,
-        recursive: cli.recursive,
-        siblings: cli.siblings,
-        start: cli.start,
-    })?;
+    let single = match cli.files.as_slice() {
+        [p] => Some(p),
+        _ => None,
+    };
+    let browse_archive = single.filter(|p| cli.browse && io::archive::is_archive(p) && p.is_file());
+    let browse_dir =
+        cli.browse || (single.is_some_and(|p| p.is_dir()) && !cli.recursive && cli.start == 1);
+    let (mut items, mut start) = if let Some(path) = browse_archive {
+        let root =
+            model::archive_folder::ArchiveFolder::root(io::archive::list_entries(path, true)?);
+        (root.items(), 0)
+    } else if browse_dir {
+        (Vec::new(), 0)
+    } else {
+        files::gather(&files::Request {
+            inputs: &cli.files,
+            recursive: cli.recursive,
+            siblings: cli.siblings,
+            start: cli.start,
+        })?
+    };
 
     let script = lua::Script::new().map_err(|e| anyhow::anyhow!("init lua: {e}"))?;
     script
@@ -155,13 +170,14 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    if cli.browse
-        && matches!(cli.files.as_slice(), [p] if io::archive::is_archive(p) && p.is_file())
-    {
+    if browse_archive.is_some() {
         script
-            .run_str("=browse", "wlens.gallery('open')")
+            .run_str(
+                "=browse",
+                "wlens.theme { gallery = { labels = true } }; wlens.gallery('open')",
+            )
             .map_err(|e| anyhow::anyhow!("{e}"))?;
-    } else if cli.browse {
+    } else if browse_dir {
         let dir = cli
             .files
             .first()
@@ -195,7 +211,7 @@ fn main() -> anyhow::Result<()> {
                 lua::ItemsOp::More(m) => sh.more = m,
             }
         }
-        if items.is_empty() && sh.hooks.get("start").is_none_or(|h| h.is_empty()) {
+        if items.is_empty() && !browse_dir && sh.hooks.get("start").is_none_or(|h| h.is_empty()) {
             bail!("no images to show");
         }
     }

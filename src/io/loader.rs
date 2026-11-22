@@ -141,8 +141,8 @@ fn worker(shared: &(Mutex<Queue>, Condvar), proxy: &EventLoopProxy<UserEvent>, m
         let t = std::time::Instant::now();
         let event = match job {
             Job::ListArchive(path) => {
-                let result =
-                    guarded(|| crate::io::archive::list(&path)).map_err(|e| format!("{e:#}"));
+                let result = guarded(|| crate::io::archive::list_entries(&path, true))
+                    .map_err(|e| format!("{e:#}"));
                 UserEvent::ArchiveListed { path, result }
             }
             Job::Image(src) => {

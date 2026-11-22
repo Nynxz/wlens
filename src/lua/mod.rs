@@ -148,7 +148,7 @@ do
   end
   for _, name in ipairs({
     "next", "prev", "first", "last", "zoom", "fit", "pan", "rotate", "flip", "reset",
-    "fullscreen", "reload", "quit", "copy", "gallery", "back", "open", "refresh",
+    "fullscreen", "reload", "quit", "copy", "gallery", "back", "forward", "open", "refresh",
     "animation", "video",
   }) do
     wlens[name] = command(name)
@@ -601,6 +601,7 @@ fn parse_items(list: &Table) -> mlua::Result<Vec<Item>> {
                         LuaValue::Nil => None,
                         v => Some(to_opt_string(&v)?),
                     },
+                    archive_folder: None,
                     icon: t.get("icon")?,
                     meta: t.get("meta")?,
                     video: t.get::<Option<bool>>("video")?.unwrap_or(false),

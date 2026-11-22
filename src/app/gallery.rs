@@ -46,6 +46,11 @@ impl App {
         if on == self.gallery.active {
             return;
         }
+        if !on {
+            self.from_gallery = true;
+            self.forward_image = false;
+            self.forward_levels.clear();
+        }
         self.gallery.active = on;
         if on {
             self.ensure_selection_visible();

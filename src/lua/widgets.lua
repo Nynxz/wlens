@@ -1301,7 +1301,7 @@ function W.browse(path, o)
       items[#items + 1] = {
         src = e.path, label = e.name, container = true, icon = W.icons.album,
       }
-    elseif e.image then
+    elseif e.image or e.video then
       items[#items + 1] = { src = e.path }
     end
   end

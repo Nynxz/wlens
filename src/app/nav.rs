@@ -9,6 +9,8 @@ impl App {
         if append {
             self.items.extend(items);
         } else {
+            self.forward_levels.clear();
+            self.forward_image = false;
             self.items = items;
             self.index = start.unwrap_or(0);
             if self.items.is_empty()
@@ -77,6 +79,7 @@ impl App {
             target.clamp(0, n - 1)
         };
         if i as usize != self.index {
+            self.forward_image = false;
             self.nav_dir = if target >= self.index as isize {
                 1.0
             } else {
@@ -145,13 +148,8 @@ impl App {
         start: Option<usize>,
         title: Option<String>,
     ) {
-        self.stack.push(Level {
-            items: std::mem::take(&mut self.items),
-            index: self.index,
-            scroll: self.gallery.scroll,
-            title: self.level_title.take(),
-            more: std::mem::take(&mut self.script.shared.borrow_mut().more),
-        });
+        let parent = self.take_level();
+        self.stack.push(parent);
         self.level_title = title;
         self.gallery.scroll = 0.0;
         self.gallery.active = true;
@@ -161,11 +159,44 @@ impl App {
         self.script.emit("level");
     }
 
+    fn take_level(&mut self) -> Level {
+        Level {
+            items: std::mem::take(&mut self.items),
+            index: self.index,
+            scroll: self.gallery.scroll,
+            title: self.level_title.take(),
+            more: std::mem::take(&mut self.script.shared.borrow_mut().more),
+            forward_image: std::mem::take(&mut self.forward_image),
+        }
+    }
+
     /// Go back up a level. Returns false at the top.
     pub(super) fn back(&mut self) -> bool {
         let Some(level) = self.stack.pop() else {
             return false;
         };
+        let child = self.take_level();
+        self.forward_levels.push(child);
+        self.restore_level(level);
+        true
+    }
+
+    pub(super) fn forward(&mut self) {
+        if !self.gallery.active {
+            return;
+        }
+        if self.forward_image {
+            self.set_gallery(false);
+        } else if let Some(level) = self.forward_levels.pop() {
+            let parent = self.take_level();
+            self.stack.push(parent);
+            self.restore_level(level);
+        }
+    }
+
+    fn restore_level(&mut self, level: Level) {
+        self.listing_archive = None;
+        self.forward_image = level.forward_image;
         self.items = level.items;
         self.index = level.index.min(self.items.len().saturating_sub(1));
         self.level_title = level.title;
@@ -183,7 +214,6 @@ impl App {
         self.script.emit("select");
         self.script.emit("level");
         self.redraw();
-        true
     }
 
     /// Enter the current container, or view the current image.
@@ -193,6 +223,10 @@ impl App {
         };
         if !item.container {
             return self.set_gallery(false);
+        }
+        if let Some(folder) = &item.archive_folder {
+            self.push_level(folder.items(), None, Some(item.name()));
+            return;
         }
         match item.open {
             Some(Action::Command(c)) => self.exec(event_loop, c),

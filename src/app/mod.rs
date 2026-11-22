@@ -147,6 +147,7 @@ struct Level {
     scroll: f64,
     title: Option<String>,
     more: bool,
+    forward_image: bool,
 }
 
 #[derive(Default)]
@@ -187,6 +188,9 @@ pub struct App {
     nav_dir: f32,
     gallery: Gallery,
     stack: Vec<Level>,
+    forward_levels: Vec<Level>,
+    from_gallery: bool,
+    forward_image: bool,
     level_title: Option<String>,
     /// (depth, item count) for which `end_reached` already fired.
     end_fired: Option<(usize, usize)>,
@@ -274,6 +278,9 @@ impl App {
             nav_dir: 1.0,
             gallery: Gallery::default(),
             stack: Vec::new(),
+            forward_levels: Vec::new(),
+            from_gallery: false,
+            forward_image: false,
             level_title: None,
             end_fired: None,
             pending_advance: false,

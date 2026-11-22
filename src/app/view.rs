@@ -12,6 +12,7 @@ impl App {
             self.listing_archive = None;
         }
         let Some(src) = self.current_src().cloned() else {
+            self.update_info();
             return;
         };
         if !self.gallery.active && self.items.get(self.index).is_some_and(|i| i.container) {
