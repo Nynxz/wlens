@@ -213,6 +213,8 @@ impl ApplicationHandler<UserEvent> for App {
                             let max = g.max_scroll(self.grid_len(&g));
                             self.gallery.scroll = (self.gallery.scroll - dy).clamp(0.0, max);
                             self.gallery.shown = self.gallery.scroll;
+                        } else if press.button == MouseButton::Middle {
+                            self.pan_to_pointer(position);
                         } else {
                             self.sync_pan_mode();
                             let (img, vp) = (self.img_size(), self.viewport);
@@ -267,16 +269,26 @@ impl ApplicationHandler<UserEvent> for App {
                         let slider = hit.clickable.filter(|&i| {
                             button == MouseButton::Left && self.ui.nodes[i].slider.is_some()
                         });
+                        // A custom click binding gets a chance to run without moving the view.
+                        let seek_on_press = button == MouseButton::Middle
+                            && !hit.over_ui
+                            && !self.gallery.active
+                            && self
+                                .script
+                                .binding(&Chord::named("middleclick", self.mods), self.mode())
+                                .is_none();
                         self.press = Some(Press {
                             button,
                             mods: self.mods,
                             at,
-                            dragged: false,
+                            dragged: seek_on_press,
                             slider,
                             on_ui: hit.over_ui,
                         });
                         if let Some(i) = slider {
                             self.slide(event_loop, i, at.x);
+                        } else if seek_on_press {
+                            self.pan_to_pointer(at);
                         }
                     }
                 }

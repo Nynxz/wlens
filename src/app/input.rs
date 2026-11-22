@@ -3,6 +3,16 @@
 use super::*;
 
 impl App {
+    pub(super) fn pan_to_pointer(&mut self, at: PhysicalPosition<f64>) {
+        if let Some(layer) = &mut self.current {
+            self.target
+                .pan_to_pointer((at.x, at.y), layer.size, self.viewport);
+            layer.view = self.target;
+            self.update_info();
+            self.redraw();
+        }
+    }
+
     /// Run a slider/input action with a value: a command template
     /// (`{value}`, `{pct}`) or a Lua function.
     pub(super) fn run_value_action(

@@ -125,6 +125,26 @@ impl View {
         self.clamp(img, vp);
     }
 
+    /// Map the inner 80% of the viewport to the whole image's pan range.
+    pub fn pan_to_pointer(&mut self, point: (f64, f64), img: (u32, u32), vp: Rect) {
+        let (w, h) = self.rotated_size(img);
+        let overflow = (
+            (w * self.zoom - vp.w).max(0.0),
+            (h * self.zoom - vp.h).max(0.0),
+        );
+        if vp.w <= 0.0 || vp.h <= 0.0 || overflow == (0.0, 0.0) {
+            return;
+        }
+        let (cx, cy) = vp.center();
+        let axis =
+            |delta: f64, span: f64, excess: f64| (-delta / (0.8 * span)).clamp(-0.5, 0.5) * excess;
+        self.offset = (
+            axis(point.0 - cx, vp.w, overflow.0),
+            axis(point.1 - cy, vp.h, overflow.1),
+        );
+        self.fitted = false;
+    }
+
     /// Limit the offset according to `self.pan`. On axes where the image is
     /// larger than the viewport every mode stops at the image edges; they
     /// differ for images smaller than the viewport.
@@ -262,6 +282,33 @@ mod tests {
         v.zoom_at(2.0, (150.0, 60.0), img, area);
         let after = uv(v.screen_to_uv(img, area), 150.0, 60.0);
         assert!(close(before, after));
+    }
+
+    #[test]
+    fn absolute_pan_maps_pointer_to_zoomed_image() {
+        let area = Rect::new(100.0, 50.0, 400.0, 200.0);
+        let img = (400, 300);
+        let mut v = View {
+            zoom: 2.0,
+            ..View::default()
+        };
+        for (point, offset) in [
+            ((140.0, 70.0), (200.0, 200.0)),
+            ((460.0, 230.0), (-200.0, -200.0)),
+            ((900.0, -5.0), (-200.0, 200.0)),
+            ((380.0, 110.0), (-100.0, 100.0)),
+            (area.center(), (0.0, 0.0)),
+        ] {
+            v.pan_to_pointer(point, img, area);
+            assert!(close(v.offset, offset));
+        }
+        v.rotate(1);
+        v.pan_to_pointer((460.0, 70.0), (500, 100), area);
+        assert!(close(v.offset, (0.0, 400.0)));
+        v.fit(FitMode::Contain, img, area, 0.0);
+        let fitted = v;
+        v.pan_to_pointer((420.0, 75.0), img, area);
+        assert_eq!(v, fitted);
     }
 
     #[test]
