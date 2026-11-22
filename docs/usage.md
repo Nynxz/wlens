@@ -65,6 +65,7 @@ The defaults:
 | `g` `Home` / `G` `End` | First / last |
 | `+` `=` `-`, scroll wheel | Zoom (around the cursor) |
 | `1` `2` `3` | 100% / 200% / 300% |
+| `F` (Shift+f) | Reapply the current fit mode |
 | `w` `W` `e` `E` `c` | Fit modes (shrink, contain, width, height, cover) |
 | drag, `H J K L`, `Shift+arrows` | Pan |
 | `>` `<` `\|` `_` `r` | Rotate, flip, reset |
@@ -76,7 +77,7 @@ The defaults:
 | `y` / `Y` | Copy path / copy image |
 | `s` | Slideshow |
 | `a` / `A` | Smooth ↔ pixelated / checkerboard |
-| `f` or `Shift+f` | Toggle fullscreen |
+| `f` | Toggle fullscreen |
 | `P` | Play / pause an animated image |
 | right-click | Previous image; in the gallery, up a level |
 | mouse back button | Back (image → grid → parent level) |
