@@ -75,7 +75,8 @@ keys match the character typed, so `N` already means Shift+n.
 
 **Mouse names:** `ScrollUp`, `ScrollDown`, `ClickImage`, `ClickBackdrop`,
 `DoubleClick`, `RightClick`, `MiddleClick`, `MouseBack`, `MouseForward` (the
-side buttons; `MouseBack` goes back by default). Drag with the left button pans.
+side buttons; `MouseBack` goes back by default). Drag with the left or middle
+button to pan. A `MiddleClick` binding runs on release after a click.
 
 **Modes:** a binding with a 4th argument (`"image"`, `"video"` or
 `"gallery"`) only applies in that mode and wins over the global one. Video

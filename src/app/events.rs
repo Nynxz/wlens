@@ -259,11 +259,17 @@ impl ApplicationHandler<UserEvent> for App {
                 self.redraw();
             }
             WindowEvent::MouseInput { state, button, .. } => match (button, state) {
-                (MouseButton::Left, ElementState::Pressed) => {
-                    if let Some(at) = self.cursor {
+                (MouseButton::Left | MouseButton::Middle, ElementState::Pressed) => {
+                    if self.press.is_none()
+                        && let Some(at) = self.cursor
+                    {
                         let hit = self.ui.hit((at.x, at.y));
-                        let slider = hit.clickable.filter(|&i| self.ui.nodes[i].slider.is_some());
+                        let slider = hit.clickable.filter(|&i| {
+                            button == MouseButton::Left && self.ui.nodes[i].slider.is_some()
+                        });
                         self.press = Some(Press {
+                            button,
+                            mods: self.mods,
                             at,
                             dragged: false,
                             slider,
@@ -274,19 +280,20 @@ impl ApplicationHandler<UserEvent> for App {
                         }
                     }
                 }
-                (MouseButton::Left, ElementState::Released) => {
-                    if let Some(p) = self.press.take()
+                (MouseButton::Left | MouseButton::Middle, ElementState::Released) => {
+                    if let Some(p) = self.press.take_if(|p| p.button == button)
                         && !p.dragged
                         && p.slider.is_none()
                     {
-                        self.click(event_loop, p.at);
+                        if button == MouseButton::Middle {
+                            self.trigger(event_loop, &Chord::named("middleclick", p.mods));
+                        } else {
+                            self.click(event_loop, p.at);
+                        }
                     }
                 }
                 (MouseButton::Right, ElementState::Pressed) => {
                     self.trigger(event_loop, &Chord::named("rightclick", self.mods));
-                }
-                (MouseButton::Middle, ElementState::Pressed) => {
-                    self.trigger(event_loop, &Chord::named("middleclick", self.mods));
                 }
                 // The side buttons (browser-style back / forward).
                 (MouseButton::Back, ElementState::Pressed) => {

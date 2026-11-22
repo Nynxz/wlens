@@ -82,7 +82,7 @@ bind("m", "ui toggle menu", "Menu")
 bind("s", function() wlens.widgets.slideshow() end, "Slideshow on/off")
 
 -- mouse pseudo-keys: ScrollUp/Down, ClickImage, ClickBackdrop, DoubleClick,
--- RightClick, MiddleClick, MouseBack, MouseForward (drag with the left button pans)
+-- RightClick, MiddleClick, MouseBack, MouseForward (left or middle drag pans)
 -- Double-click: fitted -> 100% at the click point (200% if it already is
 -- 100%), zoomed -> back to fit.
 -- Video (mpv-style). Mode "video" falls back to image bindings, so n/p,

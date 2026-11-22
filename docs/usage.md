@@ -99,7 +99,8 @@ In the gallery the arrows (and `h j k l`) move the selection, `PageUp` /
 
 - Click the left or right part of the window to go back/forward (invisible
   click zones; the cursor changes over them when there's somewhere to go).
-- Drag to pan. Small images can be moved within the window (`pan = "bounded"`).
+- Hold the left or middle mouse button and drag to pan. Small images can be
+  moved within the window (`pan = "bounded"`).
 - Scroll to zoom around the cursor; in the gallery, scroll or drag to move.
 - Click the file name in the bar to copy its path.
 - Clicking empty space closes an open menu; it never quits.

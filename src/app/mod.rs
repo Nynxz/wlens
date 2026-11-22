@@ -114,6 +114,8 @@ struct Transition {
 }
 
 struct Press {
+    button: MouseButton,
+    mods: ModifiersState,
     at: PhysicalPosition<f64>,
     dragged: bool,
     /// Pressed on a slider: drags set its value instead of panning.
