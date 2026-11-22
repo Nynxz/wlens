@@ -146,12 +146,12 @@ fn worker(shared: &(Mutex<Queue>, Condvar), proxy: &EventLoopProxy<UserEvent>, m
                 log::debug!("decoded {} in {:?}", src.as_string(), t.elapsed());
                 UserEvent::Loaded { src, result }
             }
-            Job::Thumb(src, from, size) => {
-                let result = guarded(|| crate::io::thumbs::load(&src, from.as_ref(), size))
+            Job::Thumb(src, from, level) => {
+                let result = guarded(|| crate::io::thumbs::load(&src, from.as_ref(), level))
                     .map(Arc::new)
                     .map_err(|e| format!("{e:#}"));
                 log::trace!("thumb {} in {:?}", src.as_string(), t.elapsed());
-                UserEvent::Thumb { src, result }
+                UserEvent::Thumb { src, level, result }
             }
             Job::Fetch(id, req) => UserEvent::Fetched {
                 id,
