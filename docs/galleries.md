@@ -45,9 +45,9 @@ and Alt+Right, or the mouse's back and forward buttons, revisit a folder with
 its selection and scroll position. Opening a different folder starts a new
 forward history.
 
-Open an archive tile, or use `wlens --browse photos.zip`, to navigate its
-folders one level at a time. Opening `wlens photos.zip` directly still reads all
-images in natural page order. Videos and archives embedded inside an archive
+Open an archive tile or run `wlens photos.zip` to navigate its folders one
+level at a time. Use `wlens --flat photos.zip` to read all images in natural
+page order, or `wlens --flat ~/Pictures` for a recursive media list on disk. Videos and archives embedded inside an archive
 are skipped.
 
 ## Items

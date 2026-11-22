@@ -36,6 +36,9 @@ struct Cli {
     /// Browse folders with openable subfolder and archive tiles in the gallery.
     #[arg(short, long)]
     browse: bool,
+    /// Open media from all subfolders as one list. Combine with --browse for a thumbnail grid.
+    #[arg(long)]
+    flat: bool,
     /// Theme to use: minimal, simple, lightbox, or one of yours in
     /// ~/.config/wlens/themes/. Overrides any wlens.use() in configs.
     #[arg(short, long, env = "WLENS_THEME")]
@@ -101,23 +104,32 @@ fn main() -> anyhow::Result<()> {
         [p] => Some(p),
         _ => None,
     };
-    let browse_archive = single.filter(|p| cli.browse && io::archive::is_archive(p) && p.is_file());
-    let browse_dir =
-        cli.browse || (single.is_some_and(|p| p.is_dir()) && !cli.recursive && cli.start == 1);
-    let (mut items, mut start) = if let Some(path) = browse_archive {
-        let root =
-            model::archive_folder::ArchiveFolder::root(io::archive::list_entries(path, true)?);
-        (root.items(), 0)
-    } else if browse_dir {
-        (Vec::new(), 0)
-    } else {
-        files::gather(&files::Request {
-            inputs: &cli.files,
-            recursive: cli.recursive,
-            siblings: cli.siblings,
-            start: cli.start,
-        })?
-    };
+    let archive = single.filter(|p| io::archive::is_archive(p) && p.is_file());
+    let browse_dir = !cli.flat
+        && archive.is_none()
+        && (cli.browse || (single.is_some_and(|p| p.is_dir()) && !cli.recursive && cli.start == 1));
+    let (mut items, mut start) =
+        if let Some(path) = archive.filter(|_| !cli.flat && (cli.start == 1 || cli.browse)) {
+            let root =
+                model::archive_folder::ArchiveFolder::root(io::archive::list_entries(path, true)?);
+            let items = root.items();
+            let start = cli
+                .start
+                .saturating_sub(1)
+                .min(items.len().saturating_sub(1));
+            (items, start)
+        } else if browse_dir {
+            (Vec::new(), 0)
+        } else {
+            files::gather(&files::Request {
+                inputs: &cli.files,
+                recursive: cli.recursive || cli.flat,
+                siblings: cli.siblings,
+                start: cli.start,
+            })?
+        };
+    let browse_items = !browse_dir
+        && (cli.browse || (archive.is_some() && items.iter().any(|item| item.container)));
 
     let script = lua::Script::new().map_err(|e| anyhow::anyhow!("init lua: {e}"))?;
     script
@@ -170,7 +182,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    if browse_archive.is_some() {
+    if browse_items {
         script
             .run_str(
                 "=browse",

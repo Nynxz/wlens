@@ -11,12 +11,15 @@ downloaded in the background and cached.
 
 ## Viewing images in archives
 
-`wlens photos.zip` opens the first image. Use `wlens -n 12 photos.zip`
-to start on the twelfth image, or `wlens --browse photos.zip` to open the
-folder browser. ZIP, RAR, 7z, tar and common compressed tar formats are
-supported, including the CBZ, CBR, CB7 and CBT extensions. Images in
-subfolders are included and sorted by their full entry names, so
-`trip2/photo9.jpg` comes before `trip2/photo10.jpg` and `trip10/photo1.jpg`.
+Opening `wlens photos.zip` shows its top-level folders and images. An archive
+with images only at the root opens on the first image. Use `--browse` to start
+in the grid in either case. Open a folder with Return or a click.
+
+`wlens --flat photos.zip` reads images from every subfolder as one naturally
+sorted sequence. `--flat --browse` shows the sequence as thumbnails.
+`wlens -n 12 photos.zip` also uses the flat sequence to start on page 12.
+ZIP, RAR, 7z, tar and common compressed tar formats are supported, including
+the CBZ, CBR, CB7 and CBT extensions.
 
 When you first view an image or request its thumbnail, a background worker
 extracts the images in archive order. Solid archives need just one
@@ -37,6 +40,7 @@ image formats and must be unencrypted. Each page is limited to 64 megapixels
 |---|---|
 | `-r, --recursive` | Include images in subdirectories |
 | `-S, --siblings` | Given one file, browse the other images in its folder |
+| `--flat` | Read media from every subfolder as one list |
 | `-b, --browse` | Folders and archives become tiles you can open (see [Galleries](galleries.md)) |
 | `-n, --start N` | Start at the Nth image (1-based) |
 | `-f, --fullscreen` | Start fullscreen |
