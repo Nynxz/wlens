@@ -26,7 +26,7 @@ return function(o)
   }
 
   local layout = (o.layout or function(w) return {
-    left = { w.menu_button(), w.back_button(), w.gallery_button(),
+    left = { w.menu_button(), w.navigation_button(),
              w.level(), w.filename() },
     right = { w.slot("bar"), w.play_button(), w.timecode(), w.volume(), w.dims(), w.size(), w.zoom(), w.counter(),
               w.refresh_button(), o.help_button ~= false and w.help_button() or nil },

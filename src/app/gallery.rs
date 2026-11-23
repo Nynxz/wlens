@@ -46,6 +46,10 @@ impl App {
         if on == self.gallery.active {
             return;
         }
+        if !on {
+            self.forward_image = false;
+            self.forward_levels.clear();
+        }
         self.gallery.active = on;
         if on {
             self.ensure_selection_visible();
@@ -386,6 +390,32 @@ impl App {
                     op,
                 );
                 quads.push((Some(t.tex), q));
+            }
+            if container
+                && has_thumb
+                && let Some(icon) = &self.items[i].icon
+            {
+                let side = (24.0 * scale as f64).min(r.w).min(r.h);
+                let badge = Rect::new(r.x + 3.0, r.y + 3.0, side, side);
+                quads.push((
+                    None,
+                    Quad::solid(
+                        badge,
+                        crate::model::theme::Color([0.0, 0.0, 0.0, 0.72]),
+                        radius,
+                        none,
+                        op,
+                    ),
+                ));
+                texts.push(TextDraw {
+                    text: icon.clone(),
+                    family: th.font_family.clone(),
+                    size: (side * 0.68) as f32,
+                    rect: badge,
+                    align: Align::Center,
+                    color: crate::model::theme::Color([1.0, 1.0, 1.0, op]),
+                    clip: None,
+                });
             }
             let ring = if i == self.index {
                 Some((th.gallery_selected, th.gallery_selected_width))

@@ -2,7 +2,7 @@
 
 ## The thumbnail grid
 
-`Return` (or the grid button) switches between the image and a grid of
+`Return` switches between the image and a grid of
 thumbnails. Click or `Return` opens the selected item; arrows/`hjkl` move;
 scroll or drag to move through it; `+`/`-` or `Ctrl+scroll` resize; `c`
 switches crop/fit. Style it with the `gallery.*` [theme keys](theming.md).
@@ -33,17 +33,25 @@ wlens.set_items {
   the back button) returns with the previous selection and scroll restored.
 - `Esc` climbs out one step at a time: image → its grid → parent level → quit.
 - In image view, next/prev skip containers; choosing one opens it.
-- `wlens.depth()` is how deep you are; `{level}` in UI text is the title.
+- `wlens.depth()` gives the depth. `wlens.level()` gives the browsing location’s title even in an empty grid.
 - `pop_items()` leaves a level in order with other list changes made in the
   same callback (useful for rebuilding both levels on refresh).
 
 ## Folders
 
-`wlens --browse ~/Pictures`, or `wlens.widgets.browse(path)`: subfolders come
-first as tiles (covered by their first image, with an image count), then the
-folder's images. Local archives also appear as tiles. Opening an archive
-lists its image pages in a new grid. Back returns to the folder with the
-archive still selected. Browsing the parent folder leaves its archives packed.
+`wlens ~/Pictures` opens the folder browser. Folders and archives appear first,
+then images and supported videos. Return opens the selected tile. Alt+Left
+and Alt+Right, or the mouse's back and forward buttons, revisit a folder with
+its selection and scroll position. Right-click leaves an image for its thumbnails;
+right-click again to return to the parent folder. Press `v` to include
+subfolders in a single grid, and press it again to restore the folder view. Opening a different folder starts a new
+forward history.
+
+Open an archive tile or run `wlens photos.zip` to navigate its folders one
+level at a time. The bottom bar shows the archive or directory name at its root.
+Flat view applies across folders, including those revisited with Back or Forward. Use `wlens --flat photos.zip` to read all images in natural
+page order, or `wlens --flat ~/Pictures` for a recursive media list on disk. Videos and archives embedded inside an archive
+are skipped.
 
 ## Items
 

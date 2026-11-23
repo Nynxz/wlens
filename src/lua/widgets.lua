@@ -795,17 +795,17 @@ function W.button(icon, action, tip, o)
   }, o)
 end
 
--- Shown only inside a level (a folder, an album…): go back up.
+-- Back steps from an image to its grid, then from that grid to its parent.
 function W.back_button(o)
   return W.button(W.icons.back, "back", "Back", E({
     id = "back_button",
-    show = function(img) return img ~= nil and img.depth > 0 end,
+    show = function(img) return wlens.depth() > 0 or (img ~= nil and img.mode ~= "gallery" and img.count > 0) end,
   }, o or {}))
 end
 
--- The current level's title ("Holiday 2026"), hidden at the top level.
+-- The browsing location also has a name when its grid is empty.
 function W.level(o)
-  return W.label("{level}", E({
+  return W.label(function() return wlens.level() end, E({
     color = W.style.dim, max_width = 220,
     -- From an image: click to see this level's grid (it never leaves the level).
     on_click = function()
@@ -813,9 +813,9 @@ function W.level(o)
       if c and c.mode ~= "gallery" then wlens.gallery("open") end
     end,
     cursor = function(img) return (img and img.mode ~= "gallery") and "pointer" or "default" end,
-    tooltip = "Show all", radius = W.style.button_radius, padding = { 3, 8 },
+    tooltip = "Thumbnails", radius = W.style.button_radius, padding = { 3, 8 },
     hover = { background = W.style.hover, color = W.style.fg },
-    show = function(img) return img ~= nil and img.level ~= nil end,
+    show = function() return wlens.level() ~= nil end,
   }, o or {}))
 end
 
@@ -826,10 +826,20 @@ end
 -- Show the thumbnail grid (from an image). In the grid it does nothing:
 -- opening an image is a click or Return, never this button.
 function W.gallery_button(o)
-  return W.button(W.icons.grid, "gallery open", "Show all", E({
+  return W.button(W.icons.grid, "gallery open", "Thumbnails", E({
     id = "gallery_button",
-    cursor = function(img) return (img and img.mode ~= "gallery") and "pointer" or "default" end,
+    show = function(img) return img and img.mode ~= "gallery" and img.count > 0 end,
   }, o or {}))
+end
+
+-- Reserve the Back button’s space even in the root grid.
+function W.navigation_button(o)
+  local size = (o and o.font_size) or W.style.icon_size
+  local button = E({ anchor = "center", width = "100%", height = "100%", anim = 0 }, o or {})
+  return {
+    { width = size + 14, height = size + 6 },
+    W.back_button(button),
+  }
 end
 
 -- Open the keybindings sheet.
@@ -921,7 +931,7 @@ W.default_menu = {
   { "Actual size", "zoom actual" },
   { "Fullscreen", "fullscreen" },
   "-",
-  { "Show all (grid)", "gallery open" },
+  { "Toggle flat view", "gallery flat" },
   { "Back", "back" },
   { "Refresh", "refresh" },
   { "Slideshow", function() W.slideshow() end },
@@ -1072,6 +1082,7 @@ function W.default_settings_tabs()
   } },
   { "Gallery", {
     W.setting("Thumbnails", W.choice("gallery.fit", { { "Crop", "cover" }, { "Fit", "contain" } })),
+    W.setting("Flat view", W.toggle("gallery.flat"), "Include media from subfolders"),
     W.setting("Names", W.toggle("gallery.labels"), "Under each thumbnail"),
     W.setting("Size", W.range("gallery.size", 96, 400, { step = 8 })),
   } },
@@ -1271,12 +1282,8 @@ end
 -- Browse folders as levels: subfolders are containers (covered by their
 -- first image) and opening one goes inside; Back/Escape comes out again.
 --   wlens.widgets.browse("/home/me/Pictures")
-function W.browse(path, o)
-  o = o or {}
-  path = path:gsub("/+$", "")
-  if path == "" then path = "/" end
-  local ok, entries = pcall(wlens.list_dir, path)
-  if not ok then return wlens.toast("Can't open " .. path, 4) end
+function W.directory_items(path)
+  local entries = wlens.list_dir(path)
   local items = {}
   for _, e in ipairs(entries) do
     if e.dir then
@@ -1300,7 +1307,7 @@ function W.browse(path, o)
       items[#items + 1] = {
         src = e.path, label = e.name, container = true, icon = W.icons.album,
       }
-    elseif e.image then
+    elseif e.image or e.video then
       items[#items + 1] = { src = e.path }
     end
   end
@@ -1311,14 +1318,23 @@ function W.browse(path, o)
   end
   items = folders
   for _, it in ipairs(files) do items[#items + 1] = it end
+  return items
+end
+
+function W.browse(path, o)
+  o = o or {}
+  path = path:gsub("/+$", "")
+  if path == "" then path = "/" end
+  local ok, items = pcall(W.directory_items, path)
+  if not ok then return wlens.toast("Can't open " .. path, 4) end
   -- Folder names matter here, so show labels unless asked not to.
   -- A default, not a remembered change (wlens.theme, not wlens.set).
   if o.labels ~= false then wlens.theme { gallery = { labels = true } } end
   local title = path:match("([^/]+)$") or path
   if o.push then
-    wlens.push_items(items, { title = title })
+    wlens.push_items(items, { title = title, directory = path })
   else
-    wlens.set_items(items)
+    wlens.set_items(items, nil, path)
     wlens.gallery("open")
   end
 end
