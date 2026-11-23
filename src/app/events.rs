@@ -4,12 +4,12 @@ use super::*;
 
 /// The binding supplies direction and sensitivity. Wheel units are rows,
 /// precision input is already in physical pixels.
-fn gallery_scroll_input(delta: MouseScrollDelta, rows: f64, row_height: f64) -> ScrollInput {
+fn gallery_scroll_input(delta: MouseScrollDelta, rows: f64, row_height: f64) -> ui::ScrollInput {
     match delta {
         MouseScrollDelta::LineDelta(_, lines) => {
-            ScrollInput::Wheel(-rows * f64::from(lines.abs()) * row_height)
+            ui::ScrollInput::Wheel(-rows * f64::from(lines.abs()) * row_height)
         }
-        MouseScrollDelta::PixelDelta(p) => ScrollInput::Pixels(-rows * p.y.abs()),
+        MouseScrollDelta::PixelDelta(p) => ui::ScrollInput::Pixels(-rows * p.y.abs()),
     }
 }
 
@@ -214,9 +214,12 @@ impl ApplicationHandler<UserEvent> for App {
                         MouseScrollDelta::PixelDelta(p) => ui::ScrollInput::Pixels(p.y),
                     };
                     if self.ui.scroll_at((c.x, c.y), input) {
+                        self.scroll_accum = 0.0;
                         self.redraw();
                         return;
                     }
+                } else if self.ui.open_overlay().is_some() {
+                    return;
                 }
                 // Continuous gallery bindings consume fractional input. Other
                 // bindings (e.g. next image) still fire in discrete steps.
@@ -369,13 +372,19 @@ impl ApplicationHandler<UserEvent> for App {
                         && self.ui.hit((at.x, at.y)).clickable == p.target
                     {
                         if button == MouseButton::Middle {
-                            self.trigger(event_loop, &Chord::named("middleclick", p.mods));
+                            if self.ui.open_overlay().is_none() {
+                                self.trigger(event_loop, &Chord::named("middleclick", p.mods));
+                            }
                         } else {
                             self.click(event_loop, at);
                         }
                     }
                     self.update_cursor();
                 }
+                (
+                    MouseButton::Right | MouseButton::Back | MouseButton::Forward,
+                    ElementState::Pressed,
+                ) if self.ui.open_overlay().is_some() => {}
                 (MouseButton::Right, ElementState::Pressed) => {
                     self.trigger(event_loop, &Chord::named("rightclick", self.mods));
                 }

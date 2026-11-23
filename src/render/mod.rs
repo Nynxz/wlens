@@ -135,6 +135,8 @@ pub struct TextDraw {
     /// Box to align the text within (vertically centred).
     pub rect: Rect,
     pub align: Align,
+    /// Center a button label by its visible glyphs, including icon-font bearings.
+    pub center_ink: bool,
     /// sRGB, alpha already multiplied by opacity.
     pub color: Color,
     /// Also clip to this (a scrolling area).

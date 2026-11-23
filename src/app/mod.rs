@@ -16,7 +16,7 @@ use winit::platform::wayland::WindowAttributesExtWayland;
 use winit::window::{CursorIcon, Fullscreen, Window, WindowId};
 
 use crate::geom::anim::{approach, lerp};
-use crate::geom::grid::{Grid, ScrollInput};
+use crate::geom::grid::Grid;
 use crate::geom::view::{Rect, View};
 use crate::io::loader::{Decoded, Job, LoadResult, Loader, ThumbResult};
 use crate::lua::{Action, ImageInfo, ItemsOp, Script};

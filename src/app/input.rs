@@ -162,12 +162,11 @@ impl App {
         let p = (at.x, at.y);
         // An open menu: a click anywhere but on it closes it (and does
         // nothing else), like a native menu.
-        let open = self.ui.open_overlays();
-        if !open.is_empty() && !open.iter().any(|&i| self.ui.on_overlay_content(i, p)) {
-            for i in open {
-                if let Some(id) = self.ui.nodes[i].id.clone() {
-                    let _ = self.ui.set_forced(&id, "hide");
-                }
+        if let Some(i) = self.ui.open_overlay()
+            && !self.ui.on_overlay_content(i, p)
+        {
+            if let Some(id) = self.ui.nodes[i].id.clone() {
+                let _ = self.ui.set_forced(&id, "hide");
             }
             self.sync_visibility();
             self.redraw();

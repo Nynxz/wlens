@@ -19,6 +19,7 @@ type Key = (String, String, u32);
 struct Entry {
     buffer: Buffer,
     size: (f32, f32),
+    ink_center: Option<(f32, f32)>,
     used: u64,
 }
 
@@ -62,7 +63,7 @@ impl Text {
         }
     }
 
-    fn entry(&mut self, text: &str, fam: &str, size: f32) -> &mut Entry {
+    fn entry(&mut self, text: &str, fam: &str, size: f32, center_ink: bool) -> &mut Entry {
         let key: Key = (text.to_string(), fam.to_string(), size.to_bits());
         let frame = self.frame;
         let fonts = self.fonts.get_or_insert_with(|| {
@@ -93,9 +94,38 @@ impl Text {
             Entry {
                 buffer,
                 size: (w.ceil(), h.ceil()),
+                ink_center: None,
                 used: frame,
             }
         });
+        if center_ink && e.ink_center.is_none() {
+            let mut bounds: Option<(i32, i32, i32, i32)> = None;
+            for run in e.buffer.layout_runs() {
+                for glyph in run.glyphs {
+                    let g = glyph.physical((0.0, 0.0), 1.0);
+                    let Some(image) = self.swash.get_image_uncached(fonts, g.cache_key) else {
+                        continue;
+                    };
+                    let p = image.placement;
+                    if p.width == 0 || p.height == 0 {
+                        continue;
+                    }
+                    let x = g.x + p.left;
+                    let y = run.line_y.round() as i32 + g.y - p.top;
+                    let right = x + p.width as i32;
+                    let bottom = y + p.height as i32;
+                    bounds = Some(match bounds {
+                        Some((l, t, r, b)) => (l.min(x), t.min(y), r.max(right), b.max(bottom)),
+                        None => (x, y, right, bottom),
+                    });
+                }
+            }
+            e.ink_center = Some(
+                bounds.map_or((e.size.0 / 2.0, e.size.1 / 2.0), |(l, t, r, b)| {
+                    ((l + r) as f32 / 2.0, (t + b) as f32 / 2.0)
+                }),
+            );
+        }
         e.used = frame;
         e
     }
@@ -116,7 +146,18 @@ impl Text {
         // Make sure every buffer exists before borrowing them all.
         let mut placed = Vec::with_capacity(draws.len());
         for d in draws {
-            let size = self.entry(&d.text, &d.family, d.size).size;
+            let entry = self.entry(&d.text, &d.family, d.size, d.center_ink);
+            if d.center_ink
+                && let Some((cx, cy)) = entry.ink_center
+            {
+                let (x, y) = d.rect.center();
+                placed.push((
+                    (x - f64::from(cx)).round() as f32,
+                    (y - f64::from(cy)).round() as f32,
+                ));
+                continue;
+            }
+            let size = entry.size;
             let x = match d.align {
                 Align::Start => d.rect.x,
                 Align::Center => d.rect.x + (d.rect.w - size.0 as f64) / 2.0,
@@ -201,6 +242,6 @@ impl Text {
 
 impl Measure for Text {
     fn text_size(&mut self, text: &str, family: &str, size: f32) -> (f32, f32) {
-        self.entry(text, family, size).size
+        self.entry(text, family, size, false).size
     }
 }
