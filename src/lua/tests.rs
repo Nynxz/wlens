@@ -284,6 +284,32 @@ fn edge_navigation_stays_available_at_every_image_zoom() {
 }
 
 #[test]
+fn help_columns_follow_resizes_and_binding_changes() {
+    let s = Script::new().unwrap();
+    s.run_str(
+        "=help",
+        r#"
+        wlens.bind("a", "next", "Forward")
+        wlens.bind("b", "prev", "Back")
+        local width = 500
+        wlens.view = function() return { width = width, height = 600 } end
+        local grid = wlens.widgets.help()[1][2]
+        local first, second = grid[1], grid[2]
+        assert(not second.show() and first[1].text() == "a\nb")
+        width = 800
+        assert(second.show() and second[1].text() == "b" and first[2].text() == "Forward")
+        wlens.bind("a", "prev", "Back")
+        assert(first[1].text() == "b  a" and second[1].text() == "")
+        wlens.bind("b", nil)
+        assert(first[1].text() == "a")
+        wlens.unbind_all()
+        assert(first[1].text() == "" and first[2].text() == "")
+        "#,
+    )
+    .unwrap();
+}
+
+#[test]
 fn things_in_the_view_float_over_it() {
     let s = Script::new().unwrap();
     s.run_str(

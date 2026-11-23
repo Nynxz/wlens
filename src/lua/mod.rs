@@ -212,7 +212,8 @@ pub struct Shared {
     pub settings: Settings,
     /// Keyed by (mode, chord); mode `None` = everywhere.
     pub bindings: HashMap<(Option<String>, Chord), Binding>,
-    next_order: u64,
+    /// Advances on every binding change and orders newly defined shortcuts.
+    binding_revision: u64,
     pub timers: Vec<Timer>,
     next_timer: u64,
     /// UI element visibility by id, mirrored from the app for `wlens.visible`.

@@ -36,7 +36,10 @@ impl Script {
                         }
                         LuaValue::Function(f) => (Action::Lua(f), None),
                         LuaValue::Nil => {
-                            sh.borrow_mut().bindings.remove(&slot);
+                            let mut sh = sh.borrow_mut();
+                            if sh.bindings.remove(&slot).is_some() {
+                                sh.binding_revision += 1;
+                            }
                             return Ok(());
                         }
                         other => {
@@ -47,8 +50,8 @@ impl Script {
                         }
                     };
                     let mut sh = sh.borrow_mut();
-                    sh.next_order += 1;
-                    let order = sh.next_order;
+                    sh.binding_revision += 1;
+                    let order = sh.binding_revision;
                     let desc = desc
                         .or_else(|| command.clone())
                         .unwrap_or_else(|| "(lua)".into());
@@ -65,6 +68,12 @@ impl Script {
                     Ok(())
                 },
             )?,
+        )?;
+
+        let sh = shared.clone();
+        w.set(
+            "_bindings_revision",
+            lua.create_function(move |_, ()| Ok(sh.borrow().binding_revision))?,
         )?;
 
         // wlens.bindings() -> { {key = "n", desc = "next"}, ... } in definition order
@@ -494,7 +503,9 @@ impl Script {
         w.set(
             "unbind_all",
             lua.create_function(move |_, ()| {
-                sh.borrow_mut().bindings.clear();
+                let mut sh = sh.borrow_mut();
+                sh.bindings.clear();
+                sh.binding_revision += 1;
                 Ok(())
             })?,
         )?;
