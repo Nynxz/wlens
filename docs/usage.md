@@ -18,8 +18,12 @@ wrapper folder with the same name as the archive opens automatically.
 
 `wlens --flat photos.zip` reads images from every subfolder as one naturally
 sorted sequence. `--flat --browse` shows the sequence as thumbnails. Press
-`v` or change **Settings → Gallery → Flat view** to switch while browsing.
-The choice applies when you go Back or Forward and is remembered for the next launch.
+`v` to switch while browsing. When the current directory or archive folder
+contains subfolders, the command menu and **Settings → Gallery** also offer Flat view.
+Flat view includes the entire opened archive or directory. The open image stays on
+screen, and Back returns to the root grid with that image selected. Turning off
+Flat view takes its browsing location to
+the folder containing that image. The choice applies when you go Back or Forward and is remembered for the next launch.
 Passing `--flat` enables it for that launch.
 `wlens -n 12 photos.zip` also uses the flat sequence to start on page 12.
 ZIP, RAR, 7z, tar and common compressed tar formats are supported, including

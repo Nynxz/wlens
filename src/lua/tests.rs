@@ -228,6 +228,40 @@ fn video_controls_show_their_state() {
 }
 
 #[test]
+fn both_flat_view_controls_follow_the_browsing_location() {
+    let s = Script::new().unwrap();
+    s.run_str(
+        "=controls",
+        r#"
+        local w = wlens.widgets
+        local function find_row(tree, label)
+            for _, child in ipairs(tree) do
+                if child.text == label then return tree end
+                local row = find_row(child, label)
+                if row then return row end
+            end
+        end
+        local command = assert(find_row(w.menu(), "Toggle flat view"))
+        local gallery = w.default_settings_tabs()[2][2]
+        local setting
+        for _, row in ipairs(gallery) do
+            if find_row(row, "Flat view") then setting = row end
+        end
+        function check_visibility(expected)
+            assert(command.show() == expected)
+            assert(setting.show() == expected)
+        end
+    "#,
+    )
+    .unwrap();
+    for available in [false, true, false] {
+        s.shared.borrow_mut().has_subfolders = available;
+        s.run_str("=check", &format!("check_visibility({available})"))
+            .unwrap();
+    }
+}
+
+#[test]
 fn things_in_the_view_float_over_it() {
     let s = Script::new().unwrap();
     s.run_str(

@@ -130,7 +130,7 @@ gbind("Escape", function()
   if cur and not cur.container then wlens.gallery("close") else wlens.quit() end
 end, "Back / close")
 gbind("BackSpace", "back", "Back (parent level)")
-bind("v", "gallery flat", "Toggle flat view")
+bind("v", "set gallery.flat toggle", "Toggle flat view")
 -- The mouse's side "back" button: image -> its grid -> parent level, like a browser.
 bind("MouseBack", "back", "Back")
 bind("MouseForward", "forward", "Forward")

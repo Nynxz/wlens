@@ -44,6 +44,26 @@ impl ArchiveFolder {
             .collect()
     }
 
+    pub fn has_subfolders(&self) -> bool {
+        self.entries.iter().any(|src| {
+            let Source::Archive { entry, .. } = src else {
+                return false;
+            };
+            let path = Path::new(entry);
+            let path = path.strip_prefix(".").unwrap_or(path);
+            path.strip_prefix(&self.prefix).is_ok_and(|relative| {
+                let mut parts = relative.iter();
+                parts.next().is_some() && (entry.ends_with('/') || parts.next().is_some())
+            })
+        })
+    }
+
+    pub fn contains_folder(&self, folder: &Self) -> bool {
+        Arc::ptr_eq(&self.entries, &folder.entries)
+            && self.prefix != folder.prefix
+            && folder.prefix.starts_with(&self.prefix)
+    }
+
     pub fn contains(&self, entry: &str) -> bool {
         let path = Path::new(entry);
         path.strip_prefix(".")
@@ -139,6 +159,7 @@ mod tests {
                 })
                 .collect(),
         );
+        assert!(root.has_subfolders());
         let items = root.items();
         assert_eq!(
             items.iter().map(Item::name).collect::<Vec<_>>(),
@@ -159,6 +180,9 @@ mod tests {
             items[0].archive_folder.as_ref().unwrap().flat_items().len(),
             3
         );
+        assert!(items[0].archive_folder.as_ref().unwrap().has_subfolders());
+        assert!(!chapter[0].archive_folder.as_ref().unwrap().has_subfolders());
+        assert!(!items[2].archive_folder.as_ref().unwrap().has_subfolders());
         assert!(items[2].archive_folder.as_ref().unwrap().items().is_empty());
     }
 }

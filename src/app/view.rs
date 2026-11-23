@@ -215,6 +215,7 @@ impl App {
         let mut sh = self.script.shared.borrow_mut();
         sh.info = info;
         sh.depth = self.stack.len();
+        sh.has_subfolders = self.browser.as_ref().is_some_and(|b| b.has_subfolders);
         drop(sh);
         self.text_dirty = true;
     }

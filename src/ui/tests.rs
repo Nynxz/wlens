@@ -63,7 +63,7 @@ fn back_button_keeps_its_slot_across_image_and_grid_views() {
     let script = crate::lua::Script::new().unwrap();
     let tree = script
         .lua
-        .load("local w = wlens.widgets; return { w.bar { left = { w.menu_button(), w.navigation_button(), w.refresh_button() } } }")
+        .load("local w = wlens.widgets; return { w.bar { left = { w.menu_button(), w.navigation_button(), w.refresh_button(), w.filename() } } }")
         .eval()
         .unwrap();
     let mut ui = Ui::parse(tree).unwrap();
@@ -73,6 +73,11 @@ fn back_button_keeps_its_slot_across_image_and_grid_views() {
             .position(|n| n.id.as_deref() == Some(id))
             .unwrap()
     };
+    let arrow: String = script
+        .lua
+        .load("return wlens.widgets.icons.back")
+        .eval()
+        .unwrap();
     let back = index("back_button");
     let refresh = index("refresh_button");
     let theme = Theme::default();
@@ -83,6 +88,7 @@ fn back_button_keeps_its_slot_across_image_and_grid_views() {
         ("gallery", 1, true),
         ("gallery", 0, false),
         ("image", 0, true),
+        ("video", 0, true),
     ] {
         script.shared.borrow_mut().depth = depth;
         let img = script.lua.create_table().unwrap();
@@ -91,13 +97,19 @@ fn back_button_keeps_its_slot_across_image_and_grid_views() {
         ui.refresh(&str::to_owned, &LuaValue::Table(img));
         ui.animate(0.016, &theme, None, false);
         ui.layout(Rect::new(0.0, 0.0, 360.0, 200.0), 1.0, &theme, &mut Fixed);
+        let mut texts = Vec::new();
         ui.draw(
             1.0,
             &theme,
             &mut Vec::new(),
-            &mut Vec::new(),
+            &mut texts,
             &mut Vec::new(),
             &mut |_| None,
+        );
+        assert_eq!(texts.iter().filter(|label| label.text == arrow).count(), 1);
+        assert_eq!(
+            texts.iter().any(|label| label.text == "{name}"),
+            mode != "gallery"
         );
         let rect = ui.nodes[refresh].rect;
         assert_eq!(rect, *next_button.get_or_insert(rect));

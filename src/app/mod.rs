@@ -149,6 +149,7 @@ pub enum BrowserLocation {
 #[derive(Clone)]
 pub struct Browser {
     pub location: BrowserLocation,
+    has_subfolders: bool,
     /// Layout of the cached item list at this history level.
     pub flat: bool,
 }

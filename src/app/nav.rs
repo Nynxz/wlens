@@ -2,6 +2,37 @@
 
 use super::*;
 
+impl BrowserLocation {
+    fn contains_folder(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Directory(root), Self::Directory(dir)) => dir != root && dir.starts_with(root),
+            (Self::Archive(root), Self::Archive(folder)) => root.contains_folder(folder),
+            _ => false,
+        }
+    }
+}
+
+impl Browser {
+    pub fn new(location: BrowserLocation, flat: bool) -> Self {
+        // Keep this with the browsing level: a flat list has no folder tiles.
+        let has_subfolders = match &location {
+            BrowserLocation::Directory(dir) => std::fs::read_dir(dir).is_ok_and(|entries| {
+                entries.flatten().any(|e| {
+                    !e.file_name().as_encoded_bytes().starts_with(b".")
+                        && e.file_type()
+                            .is_ok_and(|ty| ty.is_dir() || (ty.is_symlink() && e.path().is_dir()))
+                })
+            }),
+            BrowserLocation::Archive(folder) => folder.has_subfolders(),
+        };
+        Self {
+            location,
+            flat,
+            has_subfolders,
+        }
+    }
+}
+
 impl App {
     /// Replace or extend the item list (from `wlens.set_items` / `add_items`).
     pub(super) fn apply_items(&mut self, items: Vec<Item>, append: bool, start: Option<usize>) {
@@ -144,10 +175,7 @@ impl App {
                     self.script.shared.borrow_mut().level =
                         Some(crate::files::location_name(&path));
                 }
-                self.browser = Some(Browser {
-                    location: BrowserLocation::Directory(path),
-                    flat: false,
-                });
+                self.browser = Some(Browser::new(BrowserLocation::Directory(path), false));
                 self.update_browser_view();
                 self.update_info();
             }
@@ -250,53 +278,121 @@ impl App {
             folder.items()
         };
         self.push_level(items, None, title);
-        self.browser = Some(Browser {
-            location: BrowserLocation::Archive(folder),
-            flat,
-        });
+        self.browser = Some(Browser::new(BrowserLocation::Archive(folder), flat));
+        self.update_info();
     }
 
     /// History stores the list as last displayed. Rebuild it only when the
     /// current preference differs, keeping both navigation stacks intact.
     pub(super) fn update_browser_view(&mut self) {
         let flat = self.script.shared.borrow().settings.flat;
-        let Some(browser) = self.browser.as_mut() else {
+        let Some(mut browser) = self.browser.clone() else {
             return;
         };
         if browser.flat == flat {
             return;
         }
-        let result = match &browser.location {
-            BrowserLocation::Archive(folder) => Ok(if flat {
-                folder.flat_items()
-            } else {
-                folder.items()
-            }),
-            BrowserLocation::Directory(dir) if flat => Ok(crate::files::flat_directory(dir)),
-            BrowserLocation::Directory(dir) => self.script.directory_items(dir),
-        };
-        let items = match result {
-            Ok(items) => items,
-            Err(err) => {
-                self.toast(&format!("Could not open folder: {err}"));
-                return;
+        let mut title = self.script.shared.borrow().level.clone();
+        let mut depth = self.stack.len();
+        if flat {
+            // Stop at the archive boundary when a ZIP was opened from a disk folder.
+            for level in self.stack.iter().rev() {
+                let Some(parent) = &level.browser else { break };
+                if !parent.location.contains_folder(&browser.location) {
+                    break;
+                }
+                browser = parent.clone();
+                title = level.title.clone();
+                depth -= 1;
             }
-        };
+        }
+        browser.flat = flat;
         let selected = self.items.get(self.index);
-        let index = selected.and_then(|old| matching_browser_item(old, &items));
+        let mut parents = Vec::new();
+
+        // In image view the open file is the anchor. When leaving a flat list,
+        // build its folder history without switching views or restarting playback.
+        let (items, index) = loop {
+            let result = match &browser.location {
+                BrowserLocation::Archive(folder) => Ok(if flat {
+                    folder.flat_items()
+                } else {
+                    folder.items()
+                }),
+                BrowserLocation::Directory(dir) if flat => Ok(crate::files::flat_directory(dir)),
+                BrowserLocation::Directory(dir) => self.script.directory_items(dir),
+            };
+            let items = match result {
+                Ok(items) => items,
+                Err(err) => {
+                    self.toast(&format!("Could not open folder: {err}"));
+                    return;
+                }
+            };
+            let index = selected.and_then(|old| matching_browser_item(old, &items));
+            let item = index.map(|i| &items[i]);
+            if self.gallery.active
+                || selected.is_none()
+                || selected.zip(item).is_some_and(|(a, b)| a.src == b.src)
+            {
+                break (items, index);
+            }
+            let Some((index, folder)) = index.zip(item).filter(|(_, it)| it.container) else {
+                // The open file may have been moved. Keep displaying it until Back.
+                return;
+            };
+            let location = match (&browser.location, &folder.src, &folder.archive_folder) {
+                (BrowserLocation::Archive(_), _, Some(child)) => {
+                    BrowserLocation::Archive(child.clone())
+                }
+                (BrowserLocation::Directory(dir), Source::Path(path), _)
+                    if path.parent() == Some(dir.as_path()) =>
+                {
+                    BrowserLocation::Directory(path.clone())
+                }
+                _ => return,
+            };
+            let next_title = folder.name();
+            parents.push(Level {
+                scroll: self.grid().scroll_to_show(index, 0.0, items.len()),
+                items,
+                index,
+                title,
+                more: false,
+                browser: Some(browser),
+                forward_image: false,
+            });
+            title = Some(next_title);
+            browser = Browser::new(location, flat);
+        };
         self.forward_image &= selected
             .zip(index.and_then(|i| items.get(i)))
             .is_some_and(|(old, new)| old.src == new.src && !new.container);
-        browser.flat = flat;
+        let changed_level = depth != self.stack.len() || !parents.is_empty();
+        if flat
+            && self
+                .forward_levels
+                .last()
+                .and_then(|level| level.browser.as_ref())
+                .is_some_and(|next| browser.location.contains_folder(&next.location))
+        {
+            self.forward_levels.clear();
+        }
+        self.stack.truncate(depth);
+        self.stack.extend(parents);
+        self.script.shared.borrow_mut().level = title;
+        self.browser = Some(browser);
         self.items = items;
         self.index = index.unwrap_or(0);
         self.script.shared.borrow_mut().items = self.items.clone();
-        self.gallery.active = true;
         self.gallery.requested = None;
         self.gallery.scroll = 0.0;
         self.ensure_selection_visible();
         self.gallery.shown = self.gallery.scroll;
         self.sync();
+        if changed_level {
+            self.script.emit("level");
+        }
         self.redraw();
     }
 
