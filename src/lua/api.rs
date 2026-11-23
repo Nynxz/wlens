@@ -262,7 +262,12 @@ impl Script {
                     .flatten()
                     .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
                     .collect();
-                entries.sort_by_key(|e| e.file_name().to_string_lossy().to_lowercase());
+                entries.sort_by(|a, b| {
+                    crate::files::natural_cmp(
+                        &a.file_name().to_string_lossy(),
+                        &b.file_name().to_string_lossy(),
+                    )
+                });
                 let out = lua.create_table()?;
                 for e in entries {
                     let p = e.path();
@@ -272,6 +277,7 @@ impl Script {
                     t.set("dir", p.is_dir())?;
                     t.set("image", crate::files::is_image(&p))?;
                     t.set("video", crate::files::is_video(&p))?;
+                    t.set("archive", crate::io::archive::is_archive(&p) && p.is_file())?;
                     out.push(t)?;
                 }
                 Ok(out)

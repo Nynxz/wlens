@@ -13,6 +13,7 @@ depends=(
   'glibc'
   'gst-plugins-base-libs'
   'gstreamer'
+  'libarchive>=3.8.11'
   'libxkbcommon'
   'vulkan-icd-loader'
   'wayland'

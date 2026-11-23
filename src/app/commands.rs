@@ -175,13 +175,16 @@ impl App {
         let mut cmd = std::process::Command::new("wl-copy");
         cmd.stdin(std::process::Stdio::piped());
         let local = match &item.src {
+            Source::Archive { archive, entry } => crate::io::archive::cached_path(archive, entry)
+                .ok()
+                .filter(|p| p.is_file()),
             Source::Path(p) => Some(p.clone()),
             Source::Url(u) => crate::io::remote::cached_path(u).filter(|p| p.exists()),
         };
         let (data, label): (Vec<u8>, &str) = match what {
             "image" => {
                 let Some(file) = local else {
-                    return self.toast("Not downloaded yet");
+                    return self.toast("Image is not cached yet");
                 };
                 let fmt = image::ImageFormat::from_path(&file).ok().or_else(|| {
                     std::fs::read(&file)
@@ -199,6 +202,7 @@ impl App {
             "name" => (item.name().into_bytes(), "Copied name"),
             "dir" => {
                 let dir = match &item.src {
+                    Source::Archive { archive, .. } => Some(archive.to_string_lossy().into_owned()),
                     Source::Path(p) => std::fs::canonicalize(p)
                         .ok()
                         .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned())),
@@ -208,6 +212,7 @@ impl App {
             }
             _ => {
                 let text = match &item.src {
+                    Source::Archive { .. } => item.src.as_string(),
                     Source::Path(p) => std::fs::canonicalize(p)
                         .unwrap_or(p.clone())
                         .to_string_lossy()

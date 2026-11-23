@@ -1296,6 +1296,10 @@ function W.browse(path, o)
         thumb = cover, count = count > 0 and count or nil, icon = W.icons.folder,
         open = function() W.browse(e.path, { push = true }) end,
       }
+    elseif e.archive then
+      items[#items + 1] = {
+        src = e.path, label = e.name, container = true, icon = W.icons.album,
+      }
     elseif e.image then
       items[#items + 1] = { src = e.path }
     end

@@ -6,6 +6,11 @@ impl App {
     /// Show the current item if decoded, and (re)queue preloads around it.
     /// In gallery mode only thumbnails load; the full image waits for `open`.
     pub(super) fn sync(&mut self) {
+        if self.listing_archive.is_some()
+            && self.current_src().and_then(Source::local_path) != self.listing_archive.as_deref()
+        {
+            self.listing_archive = None;
+        }
         let Some(src) = self.current_src().cloned() else {
             return;
         };
@@ -164,6 +169,7 @@ impl App {
             let (position, duration, paused) = vinfo.unwrap_or((0.0, 0.0, false));
             let path = item.src.as_string();
             let dir = match &item.src {
+                Source::Archive { archive, .. } => archive.to_string_lossy().into_owned(),
                 Source::Path(p) => p
                     .parent()
                     .map(|d| d.to_string_lossy().into_owned())
