@@ -84,7 +84,8 @@ wlens.clear_slot("right")
 
 `w.slot(name, style, outer)` declares one: hidden while empty, `style` is the
 container (the theme decides what a sidebar looks like), `outer` an optional
-wrapper such as `{ padding = 18 }` for a floating panel. The `simple`
+wrapper such as `{ padding = 18 }` for a floating panel. A populated slot follows
+the theme’s `show` rule. Clearing the slot removes the widgets added by scripts. The `simple`
 and `lightbox` presets have `top` (above the main view, e.g. a page header),
 `left`, `right`, `overlay` (a layer over the main view for scripts' menus,
 dialogs and floating labels) and `bar` (simple) / `caption` (lightbox).

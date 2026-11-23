@@ -313,3 +313,35 @@ fn folder_browser_exposes_archives_as_containers() {
             .all(|item| item.container && item.icon.is_some())
     );
 }
+
+#[test]
+fn script_slot_changes_preserve_theme_children_and_visibility() {
+    let script = Script::new().unwrap();
+    script
+        .run_str(
+            "=slots",
+            r#"
+        local w = wlens.widgets
+        local visible = function(img) return img ~= nil end
+        local fixed = w.label("theme")
+        local bar = w.slot("test", { fixed, show = visible })
+        local wrap = w.slot("test", {}, { show = visible })
+        local spec = { bar, wrap }
+        wlens.ui(spec)
+        assert(wrap.show == "never")
+        assert(not pcall(wlens.ui, {{ invalid_property = true }}))
+        assert(wlens._ui_spec == spec)
+        assert(not pcall(wlens.slot, "test", { invalid_property = true }))
+        assert(#bar == 1 and wrap.show == "never")
+        for _ = 1, 2 do
+          wlens.slot("test", w.label("script"))
+          assert(#bar == 2 and #wrap[1] == 1)
+          assert(bar.show == visible and wrap.show == visible)
+          wlens.clear_slot("test")
+          assert(#bar == 1 and bar[1] == fixed and bar.show == visible)
+          assert(#wrap[1] == 0 and wrap.show == "never")
+        end
+    "#,
+        )
+        .unwrap();
+}
