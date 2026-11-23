@@ -1144,7 +1144,13 @@ function W.help(o)
   o = o or {}
   local max_cols = o.columns or 4
   local col_w = o.column_width or 300
-  local function fit()
+  local revision, rows, columns
+  local function layout()
+    local rev = wlens._bindings_revision()
+    if rev ~= revision then
+      rows = W.binding_rows()
+      revision, columns = rev, nil
+    end
     -- Fit the area it's shown over (the main view), else the window.
     local v = wlens.view()
     local win = wlens.window()
@@ -1153,25 +1159,33 @@ function W.help(o)
     local by_width = math.floor((width - 80) / col_w)
     -- Enough columns that one column fits the height (rows are ~15px).
     local per_col = math.max(1, math.floor((height - 140) / 15))
-    local by_height = math.ceil(#W.binding_rows() / per_col)
-    return math.max(1, math.min(max_cols, math.max(by_width, by_height)))
+    local by_height = math.ceil(#rows / per_col)
+    local cols = math.max(1, math.min(max_cols, math.max(by_width, by_height)))
+    if not columns or #columns ~= cols then
+      columns = {}
+      local per = math.ceil(#rows / cols)
+      for c = 1, cols do
+        local keys, desc = {}, {}
+        for i = (c - 1) * per + 1, math.min(c * per, #rows) do
+          keys[#keys + 1] = rows[i].keys
+          desc[#desc + 1] = rows[i].desc
+        end
+        columns[c] = { keys = table.concat(keys, "\n"), desc = table.concat(desc, "\n") }
+      end
+    end
+    return columns
   end
   local function column(c, field)
     return function()
-      local rows, cols = W.binding_rows(), fit()
-      local per = math.ceil(#rows / cols)
-      local out = {}
-      for i = (c - 1) * per + 1, math.min(c * per, #rows) do
-        out[#out + 1] = rows[i][field]
-      end
-      return table.concat(out, "\n")
+      local col = layout()[c]
+      return col and col[field] or ""
     end
   end
   local grid = { gap = 28, align = "start" }
   for c = 1, max_cols do
     grid[#grid + 1] = {
       gap = 14, align = "start",
-      show = function() return c <= fit() end,
+      show = function() return c <= #layout() end,
       { text = column(c, "keys"), color = W.style.accent,
         font = o.key_font or "monospace", font_size = 12 },
       { text = column(c, "desc"), color = W.style.fg, font_size = 12 },
