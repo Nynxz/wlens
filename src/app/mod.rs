@@ -254,6 +254,7 @@ pub struct App {
     last_click: Option<(Instant, PhysicalPosition<f64>)>,
     /// Anchor for the next zoom command (cursor for mouse zoom, else centre).
     zoom_anchor: Option<(f64, f64)>,
+    wheel_zooming: bool,
     scroll_accum: f64,
     last_frame: Instant,
     /// A frame the surface couldn't take: when to try again, and how many
@@ -337,6 +338,7 @@ impl App {
             press: None,
             last_click: None,
             zoom_anchor: None,
+            wheel_zooming: false,
             scroll_accum: 0.0,
             last_frame: Instant::now(),
             frame_retry: None,

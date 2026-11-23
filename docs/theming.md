@@ -104,7 +104,8 @@ Lengths are logical pixels.
 | `image.checker.a`, `image.checker.b`, `image.checker.size` | The two colours one at a time; square size |
 | `transition.kind` | `none` `fade` `slide` `zoom` |
 | `transition.duration`, `transition.easing` | Seconds; `linear` `ease_in` `ease_out` `ease_in_out` `ease_out_back` `ease_out_expo` |
-| `anim.view` | Seconds for zoom/pan to glide (0 = instant) |
+| `anim.view` | Seconds for pan and non-wheel zoom to glide (0 = instant) |
+| `anim.wheel_zoom` | Seconds for mouse wheel zoom to glide (default 0.16, 0 = instant). Precision scrolling applies fractional zoom as you move. |
 | `anim.ui` | Seconds for UI fades and hover |
 | `ui.idle` | Seconds before hover-revealed controls hide |
 | `font.family`, `font.size`, `font.color` | |

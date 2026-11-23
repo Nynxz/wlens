@@ -2,6 +2,15 @@
 
 use super::*;
 
+const PX_PER_STEP: f64 = 40.0;
+
+fn wheel_steps(delta: MouseScrollDelta, scale: f32) -> f64 {
+    match delta {
+        MouseScrollDelta::LineDelta(_, y) => f64::from(y),
+        MouseScrollDelta::PixelDelta(p) => p.y / (PX_PER_STEP * f64::from(scale)),
+    }
+}
+
 /// The binding supplies direction and sensitivity. Wheel units are rows,
 /// precision input is already in physical pixels.
 fn gallery_scroll_input(delta: MouseScrollDelta, rows: f64, row_height: f64) -> ui::ScrollInput {
@@ -221,22 +230,36 @@ impl ApplicationHandler<UserEvent> for App {
                 } else if self.ui.open_overlay().is_some() {
                     return;
                 }
-                // Continuous gallery bindings consume fractional input. Other
+                // Continuous zoom and gallery bindings consume fractional input. Other
                 // bindings (e.g. next image) still fire in discrete steps.
-                const PX_PER_STEP: f64 = 40.0;
-                let steps = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y as f64,
-                    MouseScrollDelta::PixelDelta(p) => p.y / (PX_PER_STEP * self.scale as f64),
-                };
-                if self.gallery.active && steps != 0.0 {
+                let steps = wheel_steps(delta, self.scale);
+                if steps != 0.0 {
                     let name = if steps > 0.0 {
                         "scrollup"
                     } else {
                         "scrolldown"
                     };
                     let chord = Chord::named(name, self.mods);
-                    if let Some(Action::Command(Command::Gallery(action, factor))) =
-                        self.script.binding(&chord, self.mode())
+                    let binding = self.script.binding(&chord, self.mode());
+                    if let Some(Action::Command(Command::Zoom(
+                        direction @ (Zoom::In | Zoom::Out),
+                    ))) = &binding
+                    {
+                        let step = self.script.shared.borrow().settings.zoom_step;
+                        let exponent = if *direction == Zoom::In {
+                            steps.abs()
+                        } else {
+                            -steps.abs()
+                        };
+                        let zoom = self.target.zoom * step.powf(exponent);
+                        self.zoom_anchor = self.cursor.map(|c| (c.x, c.y));
+                        self.exec(event_loop, Command::Zoom(Zoom::To(zoom)));
+                        self.zoom_anchor = None;
+                        self.wheel_zooming = matches!(delta, MouseScrollDelta::LineDelta(..));
+                        return;
+                    }
+                    if self.gallery.active
+                        && let Some(Action::Command(Command::Gallery(action, factor))) = binding
                     {
                         if action == "scroll" {
                             let grid = self.grid();
@@ -405,6 +428,22 @@ impl ApplicationHandler<UserEvent> for App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wheel_zoom_preserves_fractional_input_at_both_scales() {
+        let steps = |pixels, scale| {
+            wheel_steps(
+                MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, pixels)),
+                scale,
+            )
+        };
+        let eighth = steps(5.0, 1.0);
+        assert_eq!(eighth, 0.125);
+        assert_eq!(steps(7.5, 1.5), eighth);
+        assert_eq!(steps(-7.5, 1.5), -eighth);
+        let notch = wheel_steps(MouseScrollDelta::LineDelta(0.0, 1.0), 1.5);
+        assert!((1.25_f64.powf(eighth).powi(8) - 1.25_f64.powf(notch)).abs() < 1e-12);
+    }
 
     #[test]
     fn precision_scroll_follows_the_displayed_grid() {

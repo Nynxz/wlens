@@ -224,6 +224,7 @@ pub struct Theme {
 
     /// Seconds for zoom/pan to glide to the target; 0 = instant.
     pub anim_view: f32,
+    pub anim_wheel_zoom: f32,
     /// Seconds for UI fades and hover effects.
     pub anim_ui: f32,
     /// Seconds of mouse inactivity before `show = "hover"` UI hides.
@@ -286,6 +287,7 @@ impl Default for Theme {
             checker_b: c("#383838"),
             checker_size: 12.0,
             anim_view: 0.0,
+            anim_wheel_zoom: 0.16,
             anim_ui: 0.15,
             ui_idle: 1.5,
             transition: TransitionKind::None,
@@ -425,6 +427,7 @@ impl Theme {
             }
             "image.checker.size" => self.checker_size = len(v)?.max(1.0),
             "anim.view" => self.anim_view = len(v)?,
+            "anim.wheel_zoom" => self.anim_wheel_zoom = len(v)?,
             "anim.ui" => self.anim_ui = len(v)?,
             "ui.idle" => self.ui_idle = len(v)?,
             "transition.kind" => self.transition = TransitionKind::parse(v)?,
@@ -483,6 +486,7 @@ impl Theme {
             "image.checker.b" => c(self.checker_b),
             "image.checker.size" => n(self.checker_size),
             "anim.view" => n(self.anim_view),
+            "anim.wheel_zoom" => n(self.anim_wheel_zoom),
             "anim.ui" => n(self.anim_ui),
             "ui.idle" => n(self.ui_idle),
             "transition.kind" => Str(self.transition.name().into()),
