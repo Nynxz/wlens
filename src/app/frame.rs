@@ -12,14 +12,20 @@ impl App {
             let v = &mut cur.view;
             let t = &self.target;
             let eps = 1e-4 * t.zoom;
-            moving |= approach(&mut v.zoom, t.zoom, theme.anim_view, dt, eps);
-            moving |= approach(&mut v.offset.0, t.offset.0, theme.anim_view, dt, 0.2);
-            moving |= approach(&mut v.offset.1, t.offset.1, theme.anim_view, dt, 0.2);
+            let duration = if self.wheel_zooming {
+                theme.anim_wheel_zoom
+            } else {
+                theme.anim_view
+            };
+            moving |= approach(&mut v.zoom, t.zoom, duration, dt, eps);
+            moving |= approach(&mut v.offset.0, t.offset.0, duration, dt, 0.2);
+            moving |= approach(&mut v.offset.1, t.offset.1, duration, dt, 0.2);
             v.quarter_turns = t.quarter_turns;
             v.flip_h = t.flip_h;
             v.flip_v = t.flip_v;
             v.fitted = t.fitted;
         }
+        self.wheel_zooming &= moving;
         if let Some(tr) = &self.transition {
             if tr.start.elapsed().as_secs_f32() >= theme.transition_duration {
                 if let (Some(from), Some(r)) = (

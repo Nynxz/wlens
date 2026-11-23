@@ -5,6 +5,7 @@ use super::*;
 impl App {
     pub fn exec(&mut self, event_loop: &ActiveEventLoop, cmd: Command) {
         log::debug!("exec {cmd:?}");
+        self.wheel_zooming = false;
         self.sync_pan_mode();
         let (img, vp) = (self.img_size(), self.viewport);
         match cmd {
