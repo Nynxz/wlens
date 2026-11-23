@@ -1,0 +1,364 @@
+//! List image pages from headers and materialize them in one sequential pass.
+//! Only generated names are used on disk. An archive entry is never a destination path.
+
+use std::collections::HashSet;
+use std::fs::{self, File, Metadata};
+use std::io::{Read, Write};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
+use std::path::{Component, Path, PathBuf};
+
+use anyhow::{Context, Result, ensure};
+mod reader;
+use reader::Reader;
+
+use crate::model::item::Source;
+
+struct Limits {
+    entries: usize,
+    page: u64,
+    total: u64,
+}
+
+const LIMITS: Limits = Limits {
+    entries: 10_000,
+    page: 256 << 20,
+    total: 2 << 30,
+};
+
+pub fn is_archive(path: &Path) -> bool {
+    display_stem(path).is_some()
+}
+
+pub fn display_stem(path: &Path) -> Option<&str> {
+    let name = path.file_name()?.to_str()?;
+    let lower = name.to_ascii_lowercase();
+    [
+        ".cbz", ".zip", ".cbr", ".rar", ".cb7", ".7z", ".cbt", ".tar", ".tar.gz", ".tgz",
+        ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar.zst",
+    ]
+    .iter()
+    .find_map(|ext| lower.strip_suffix(ext).map(|stem| &name[..stem.len()]))
+}
+
+pub fn list(path: &Path) -> Result<Vec<Source>> {
+    list_entries(path, false)
+}
+
+pub fn list_entries(path: &Path, include_folders: bool) -> Result<Vec<Source>> {
+    let archive = fs::canonicalize(path)?;
+    let mut names = walk_entries(open_archive(&archive)?, None, &LIMITS, include_folders)
+        .with_context(|| format!("listing {}", archive.display()))?;
+    ensure!(
+        include_folders || !names.is_empty(),
+        "{} contains no image pages",
+        archive.display()
+    );
+    names.sort_unstable_by(|a, b| crate::files::natural_cmp(a, b));
+    Ok(names
+        .into_iter()
+        .map(|entry| Source::Archive {
+            archive: archive.clone(),
+            entry,
+        })
+        .collect())
+}
+
+fn open_archive(path: &Path) -> Result<File> {
+    let file = File::options()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)?;
+    ensure!(file.metadata()?.is_file(), "archive must be a regular file");
+    Ok(file)
+}
+
+fn page_name(name: &str) -> bool {
+    let path = Path::new(name);
+    crate::files::is_image(path) && safe_entry(path)
+}
+
+fn safe_entry(path: &Path) -> bool {
+    path.components().all(|c| match c {
+        Component::Normal(n) => n != "__MACOSX" && !n.as_encoded_bytes().starts_with(b"._"),
+        Component::CurDir => true,
+        _ => false,
+    })
+}
+
+fn filename(entry: &str) -> Result<String> {
+    ensure!(page_name(entry), "invalid archive page name");
+    let ext = Path::new(entry).extension().unwrap().to_str().unwrap();
+    Ok(format!(
+        "{:x}.{}",
+        md5::compute(entry),
+        ext.to_ascii_lowercase()
+    ))
+}
+
+// Include inode and nanosecond timestamps so replacing or editing an archive
+// invalidates both extracted pages and thumbnails, even within one second.
+pub(super) fn revision(meta: &Metadata) -> String {
+    let id = format!(
+        "{}:{}:{}:{}:{}:{}:{}",
+        meta.dev(),
+        meta.ino(),
+        meta.len(),
+        meta.mtime(),
+        meta.mtime_nsec(),
+        meta.ctime(),
+        meta.ctime_nsec()
+    );
+    format!("{:x}", md5::compute(id))
+}
+
+fn root() -> Result<PathBuf> {
+    Ok(dirs::cache_dir()
+        .context("no cache directory")?
+        .join("wlens/archives/v2"))
+}
+
+pub fn cached_path(archive: &Path, entry: &str) -> Result<PathBuf> {
+    Ok(root()?
+        .join(revision(&fs::metadata(archive)?))
+        .join("pages")
+        .join(filename(entry)?))
+}
+
+/// Called on loader workers. A directory lock also coalesces requests from
+/// other viewer processes. Publishing by rename hides incomplete extractions.
+pub fn materialize(archive: &Path, entry: &str) -> Result<PathBuf> {
+    materialize_in(archive, entry, &root()?)
+        .with_context(|| format!("reading {}", archive.display()))
+}
+
+fn materialize_in(archive: &Path, entry: &str, root: &Path) -> Result<PathBuf> {
+    let file = open_archive(archive)?;
+    let key = revision(&file.metadata()?);
+    let dir = root.join(&key);
+    let pages = dir.join("pages");
+    let dest = pages.join(filename(entry)?);
+    if !pages.is_dir() {
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .recursive(true)
+            .create(&dir)?;
+        let lock = File::open(&dir)?;
+        lock.lock()?;
+        if !pages.is_dir() {
+            let staging = dir.join("pending");
+            // Reclaim any staging data left by an interrupted viewer.
+            if staging.exists() {
+                fs::remove_dir_all(&staging)?;
+            }
+            fs::create_dir(&staging)?;
+            let result = (|| -> Result<()> {
+                walk(file, Some(&staging), &LIMITS)?;
+                ensure!(
+                    revision(&fs::metadata(archive)?) == key,
+                    "archive changed during extraction"
+                );
+                fs::rename(&staging, &pages)?;
+                Ok(())
+            })();
+            if result.is_err() {
+                let _ = fs::remove_dir_all(&staging);
+            }
+            result?;
+        }
+    }
+    ensure!(dest.is_file(), "missing archive page {entry}");
+    Ok(dest)
+}
+
+fn walk(file: File, output: Option<&Path>, limits: &Limits) -> Result<Vec<String>> {
+    walk_entries(file, output, limits, false)
+}
+
+fn walk_entries(
+    file: File,
+    output: Option<&Path>,
+    limits: &Limits,
+    include_folders: bool,
+) -> Result<Vec<String>> {
+    let mut iter = Reader::new(file)?;
+    let mut names = HashSet::new();
+    let mut headers = 0;
+    let mut total = 0;
+    while let Some((name, kind, declared)) = iter.header()? {
+        headers += 1;
+        ensure!(headers <= limits.entries, "too many archive entries");
+        let remaining = limits.total - total;
+        ensure!(declared <= remaining, "archive exceeds total size limit");
+        total += declared;
+        let path = Path::new(&name);
+        if include_folders
+            && kind == libc::S_IFDIR
+            && path.file_name().is_some()
+            && safe_entry(path)
+        {
+            names.insert(format!("{}/", name.trim_end_matches('/')));
+        }
+        if kind != libc::S_IFREG || !page_name(&name) {
+            continue;
+        }
+        ensure!(
+            declared <= limits.page,
+            "archive page exceeds size limit: {name}"
+        );
+        let target = output
+            .map(|dir| filename(&name).map(|f| dir.join(f)))
+            .transpose()?;
+        if !names.insert(name) {
+            continue;
+        }
+        let Some(target) = target else { continue };
+        let mut page = File::options()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(target)?;
+        let capacity = limits.page.min(remaining);
+        let written = copy_page(&mut iter, &mut page, capacity)?;
+        ensure!(written >= declared, "truncated archive page");
+        total += written.saturating_sub(declared);
+    }
+    Ok(names.into_iter().collect())
+}
+
+// Enforce the remaining budget before each write, even when a header
+// omits or understates the uncompressed size.
+fn copy_page(reader: &mut impl Read, page: &mut impl Write, capacity: u64) -> Result<u64> {
+    let mut buf = [0; 64 * 1024];
+    let mut written = 0;
+    loop {
+        let count = reader.read(&mut buf)?;
+        if count == 0 {
+            return Ok(written);
+        }
+        ensure!(
+            count as u64 <= capacity - written,
+            "archive data exceeds size limit"
+        );
+        page.write_all(&buf[..count])?;
+        written += count as u64;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture(ext: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/pages.{ext}"))
+    }
+
+    fn temp_dir(test: &str) -> PathBuf {
+        let path =
+            std::env::temp_dir().join(format!("wlens-archive-{test}-{}", std::process::id()));
+        fs::create_dir(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn archives_list_and_extract_the_same_three_pages() {
+        let root = temp_dir("formats");
+        for ext in ["cbz", "cb7", "cbr", "tar.gz"] {
+            let archive = fixture(ext);
+            let pages = list(&archive).unwrap();
+            let expected = [
+                ("chapter2/page2.png", [255, 0, 0]),
+                ("chapter2/page10.png", [0, 255, 0]),
+                ("chapter10/page2.png", [0, 0, 255]),
+            ];
+            assert_eq!(pages.len(), expected.len(), "{ext}");
+            // Simultaneous image and thumbnail requests for distinct pages.
+            std::thread::scope(|scope| {
+                for (page, (name, rgb)) in pages.iter().zip(expected) {
+                    let Source::Archive { archive, entry } = page else {
+                        panic!()
+                    };
+                    assert_eq!(entry, name);
+                    assert_eq!(Source::parse(&page.as_string()), *page);
+                    let root = &root;
+                    scope.spawn(move || {
+                        let dest = materialize_in(archive, entry, root).unwrap();
+                        assert_eq!(dest.file_name().unwrap().len(), 36);
+                        assert_eq!(fs::read_dir(dest.parent().unwrap()).unwrap().count(), 3);
+                        let img = crate::io::loader::decode_image(&dest).unwrap().into_rgb8();
+                        assert_eq!(img.get_pixel(0, 0).0, rgb);
+                        let mtime = fs::metadata(&dest).unwrap().modified().unwrap();
+                        materialize_in(archive, entry, root).unwrap();
+                        assert_eq!(fs::metadata(dest).unwrap().modified().unwrap(), mtime);
+                    });
+                }
+            });
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn only_image_paths_and_supported_formats_are_accepted() {
+        for name in [
+            "/outside.png",
+            "../outside.png",
+            "album/../image.jpg",
+            "notes.txt",
+        ] {
+            assert!(filename(name).is_err());
+        }
+        assert!(filename("album/photo.png").is_ok());
+        let root = temp_dir("unsupported");
+        let path = root.join("empty.zip");
+        fs::write(&path, b"!<arch>\n").unwrap(); // empty ar, a format we do not register
+        assert!(walk(open_archive(&path).unwrap(), None, &LIMITS).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn limits_apply_to_headers_and_payloads() {
+        for (limits, text) in [
+            (
+                Limits {
+                    entries: 1,
+                    ..LIMITS
+                },
+                "too many archive entries",
+            ),
+            (Limits { page: 5, ..LIMITS }, "page exceeds size limit"),
+            (
+                Limits {
+                    total: 100,
+                    ..LIMITS
+                },
+                "archive exceeds total size limit",
+            ),
+        ] {
+            let err = walk(File::open(fixture("cbz")).unwrap(), None, &limits).unwrap_err();
+            assert!(err.to_string().contains(text), "{err}");
+        }
+    }
+
+    #[test]
+    fn streamed_data_cannot_exceed_remaining_budget() {
+        let data = vec![1; 64 * 1024 + 2];
+        let mut output = Vec::new();
+        assert!(copy_page(&mut data.as_slice(), &mut output, 64 * 1024 + 1).is_err());
+        assert_eq!(output.len(), 64 * 1024);
+    }
+
+    #[test]
+    fn failed_pass_can_retry_after_archive_replacement() {
+        let root = temp_dir("retry");
+        let archive = root.join("book.cbz");
+        fs::write(&archive, b"invalid").unwrap();
+        assert!(materialize_in(&archive, "chapter2/page2.png", &root).is_err());
+        let failed = root.join(revision(&fs::metadata(&archive).unwrap()));
+        assert_eq!(fs::read_dir(failed).unwrap().count(), 0);
+        fs::copy(fixture("cbz"), &archive).unwrap();
+        let first = materialize_in(&archive, "chapter2/page2.png", &root).unwrap();
+        fs::copy(fixture("cb7"), &archive).unwrap();
+        let second = materialize_in(&archive, "chapter2/page2.png", &root).unwrap();
+        assert_ne!(first, second);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
