@@ -84,11 +84,6 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     let blur = in.params.z;
     let opacity = in.params.w;
 
-    // Sample unconditionally to stay in uniform control flow (mip derivatives).
-    let s = vec3<f32>(in.pos.xy, 1.0);
-    let uv = vec2<f32>(dot(in.uv0.xyz, s), dot(in.uv1.xyz, s));
-    let texel = textureSample(tex, samp, uv);
-
     // Scrolling areas clip what's inside them.
     if (in.clip.z > 0.0) {
         let p = in.pos.xy;
@@ -133,6 +128,11 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
 
     var c = premul(in.fill);
     if (in.flags.x > 0.5) {
+        // The screen-to-UV rows give the exact gradients in physical pixels.
+        // Explicit gradients let us sample only the fragments that use an image.
+        let s = vec3<f32>(in.pos.xy, 1.0);
+        let uv = vec2<f32>(dot(in.uv0.xyz, s), dot(in.uv1.xyz, s));
+        let texel = textureSampleGrad(tex, samp, uv, vec2(in.uv0.x, in.uv1.x), vec2(in.uv0.y, in.uv1.y));
         var under = c;
         if (in.flags.y > 0.5) {
             let cell = floor(in.pos.xy / g.screen.z);
