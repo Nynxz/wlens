@@ -14,7 +14,7 @@ impl App {
         } else {
             None
         };
-        let drag = self.press.as_ref().filter(|p| p.dragged && !p.on_ui);
+        let drag = self.press.as_ref().filter(|p| p.dragged && !p.blocks_drag);
         let icon = match drag.map(|p| p.button) {
             Some(MouseButton::Middle) if !self.gallery.active => CursorIcon::Crosshair,
             Some(_) => CursorIcon::Grabbing,
