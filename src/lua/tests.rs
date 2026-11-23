@@ -405,3 +405,92 @@ fn script_slot_changes_preserve_theme_children_and_visibility() {
         )
         .unwrap();
 }
+
+#[test]
+fn slideshow_interval_field_commits_only_changed_valid_numbers() {
+    let script = Script::new().unwrap();
+    script.shared.borrow_mut().started = true;
+    script
+        .run_str(
+            "=interval-field",
+            r#"
+        local field
+        for _, row in ipairs(wlens.widgets.default_settings_tabs()[1][2]) do
+          if row[2].id == "settings_slideshow_interval" then field = row[2].input end
+        end
+        assert(field.value() == "4" and field.on_change == nil)
+        for _, text in ipairs({ "", "0", "-1", "oops", "4.0" }) do
+          field.on_submit(text)
+          assert(field.value() == "4")
+        end
+        field.on_submit("2.5")
+        field.on_submit("2.50")
+        assert(field.value() == "2.5")
+    "#,
+        )
+        .unwrap();
+    assert_eq!(
+        script.shared.borrow().changed_options,
+        ["slideshow_interval"]
+    );
+}
+
+#[test]
+fn slideshow_uses_the_saved_interval_and_keeps_explicit_overrides() {
+    let script = Script::new().unwrap();
+    script
+        .run_str(
+            "=slides",
+            r#"
+        local w = wlens.widgets
+        local delay, callback, serial = nil, nil, 0
+        wlens.toast = function() end
+        wlens.next = function() end
+        wlens.after = function(secs, f)
+          assert(callback == nil)
+          delay, callback, serial = secs, f, serial + 1
+          return serial
+        end
+        wlens.cancel = function(id) assert(id == serial); callback = nil end
+        w.slideshow()
+        assert(delay == 4)
+        local stale = callback
+        w.slide_secs = 7.5
+        assert(wlens.opt.slideshow_interval == 7.5)
+        function check_reschedule()
+          assert(delay == 7.5 and serial == 2)
+          stale()
+          assert(serial == 2)
+          local advance = callback
+          callback = nil
+          advance()
+          assert(delay == 7.5 and serial == 3)
+          w.slideshow(2)
+          assert(delay == 2 and serial == 4)
+          wlens.opt.slideshow_interval = 12
+        end
+        function check_override()
+          assert(serial == 4 and delay == 2)
+          w.slideshow()
+          assert(callback == nil)
+          w.slideshow()
+          assert(delay == 12)
+        end
+    "#,
+        )
+        .unwrap();
+    script.emit("slideshow_interval_changed");
+    script.run_str("=reschedule", "check_reschedule()").unwrap();
+    script.emit("slideshow_interval_changed");
+    script.run_str("=override", "check_override()").unwrap();
+    for invalid in ["0", "-1", "1e309", "NaN"] {
+        assert!(
+            script
+                .shared
+                .borrow_mut()
+                .settings
+                .set("slideshow_interval", invalid)
+                .is_err()
+        );
+    }
+}

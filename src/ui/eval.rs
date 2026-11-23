@@ -31,6 +31,12 @@ impl Ui {
                     },
                 };
             }
+            if let Some(value) = n.input.as_ref().and_then(|spec| spec.value.as_ref()) {
+                n.text_value = value.call::<String>(info.clone()).unwrap_or_else(|e| {
+                    log::error!("ui input value: {e}");
+                    String::new()
+                });
+            }
             if let Some(t) = &n.tooltip {
                 n.tooltip_value = template(t);
             }
@@ -95,13 +101,19 @@ impl Ui {
                 continue;
             };
             let v = values.get(id).map(String::as_str).unwrap_or("");
+            n.focused = focus == Some(id.as_str());
+            if spec.value.is_some() && (!n.focused || v.is_empty()) {
+                // refresh() supplied the committed value. An empty edit starts
+                // at the left edge so typing replaces the displayed number.
+                n.input_placeholder = n.focused;
+                continue;
+            }
             n.input_placeholder = v.is_empty();
             n.text_value = if v.is_empty() {
                 spec.placeholder.clone()
             } else {
                 v.to_string()
             };
-            n.focused = focus == Some(id.as_str());
         }
     }
 

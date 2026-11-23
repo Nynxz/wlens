@@ -9,7 +9,7 @@ impl App {
 
     /// Apply whatever Lua asked for during the last call.
     pub(super) fn flush_script(&mut self) {
-        let (title, ui, items, fetches, settings_dirty) = {
+        let (title, ui, items, fetches, settings_dirty, slideshow_interval_changed) = {
             let mut sh = self.script.shared.borrow_mut();
             let fetches = if self.loader.is_some() {
                 std::mem::take(&mut sh.fetch_queue)
@@ -42,6 +42,8 @@ impl App {
                 }
             }
             // Options the user changed: save them for next time.
+            let slideshow_interval_changed =
+                sh.changed_options.iter().any(|k| k == "slideshow_interval");
             if !sh.changed_options.is_empty() {
                 let keys = std::mem::take(&mut sh.changed_options);
                 for k in keys {
@@ -72,8 +74,12 @@ impl App {
                 std::mem::take(&mut sh.pending_items),
                 fetches,
                 dirty,
+                slideshow_interval_changed,
             )
         };
+        if slideshow_interval_changed {
+            self.script.emit("slideshow_interval_changed");
+        }
         // Script errors: show the first line of the latest one.
         let errors = std::mem::take(&mut self.script.shared.borrow_mut().errors);
         if let Some(last) = errors.last() {
@@ -182,7 +188,7 @@ impl App {
                 .as_deref()
                 .is_some_and(|id| !self.ui.input_visible(id))
             {
-                self.focus = None;
+                self.set_input_focus(None);
             }
             let sh = self.script.shared.borrow();
             self.ui.apply_inputs(&sh.inputs, self.focus.as_deref());

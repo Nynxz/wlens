@@ -101,12 +101,12 @@ impl App {
                     log::warn!("ui focus: no input element with id '{id}'");
                     return;
                 }
-                self.focus = Some(id);
+                self.set_input_focus(Some(id));
                 self.text_dirty = true;
                 self.redraw();
             }
             Command::Ui(how, _) if how == "blur" => {
-                self.focus = None;
+                self.set_input_focus(None);
                 self.text_dirty = true;
                 self.redraw();
             }

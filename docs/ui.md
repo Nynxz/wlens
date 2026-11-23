@@ -182,7 +182,7 @@ tick()
 | `anchor` on a child | The child floats over its parent's box (placed like a top-level element over the window) instead of joining the row/column; it may `reserve` space |
 | `view` | `"main"`: this element is where the image / grid is drawn |
 | `image`, `fit` | A picture (path, URL, `{key}` template or function) filling the element, `cover` (default) or `contain`. Loaded through the thumbnail cache, with `http_headers` applied. Give the element a `width`/`height` |
-| `input` | A text field: `{ placeholder, on_submit, on_change }` (functions of the text, or command templates with `{value}`). Needs an `id`; the text is `wlens.input(id)`. Click or `ui focus ID` to type; Enter submits, Escape leaves, Ctrl+U clears, Ctrl+Backspace deletes a word |
+| `input` | A text field with an `id` and optional `placeholder`. Read the typed text with `wlens.input(id)`. The `on_submit` and `on_change` actions accept a function of the text or a command template with `{value}`. An optional `value(img)` function supplies the saved text. In that case, typing starts a replacement and leaving the field discards the draft. Click or use `ui focus ID` to type. Enter submits, Escape leaves, Ctrl+U clears, and Ctrl+Backspace deletes a word. |
 | `attach`, `attach_align` | `"element id"`: placed against that element — above it if there's room, else below — like a dropdown on its button (`w.menu` attaches to its `menu_button`). Centred over it by default; `attach_align = "start"` / `"end"` lines it up with an edge. Always kept inside the window |
 | `wrap` | A row whose children flow onto new lines when they don't fit (give the row a px `width`) — e.g. tag chips |
 | `responsive` | Fit a root or floating panel to its available width. Its contents are measured at that width so wrapping rows can grow vertically. |
@@ -241,7 +241,7 @@ table, so `wlens.extend(widget, { ... })` restyles it.
 | `toast()` + `wlens.toast(msg, secs)` | Transient messages |
 | `nav_zones { width, indicator, reveal, … }` | Click the edges to go back/forward |
 | `browse(path)` | Folder levels (see [Galleries](galleries.md)) |
-| `slideshow(secs)` | Toggle a slideshow |
+| `slideshow([secs])` | Toggle a slideshow using the saved interval. Pass seconds to start or restart with that delay for this run. |
 | `list(…)` | Build a UI list, skipping `false`/`nil` entries |
 | `viewing`, `browsing`, `video_mode` | Ready-made `show` functions: only while viewing an image / video, only in the grid, or only for a video outside the grid (`show = w.viewing`) |
 | `palette(spec)`, `apply_palette(spec)`, `try_palette(spec)`, `palette_names()` | Resolve a palette to its colours; apply one to `w.style` and the theme (`try_palette` only warns if it's missing); list the palettes (as `--list-palettes`) |

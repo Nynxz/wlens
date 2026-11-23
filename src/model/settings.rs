@@ -93,6 +93,7 @@ pub struct Settings {
     pub filter: Filter,
     /// Multiplicative step for `zoom in` / `zoom out`.
     pub zoom_step: f64,
+    pub slideshow_interval: f64,
     /// Wrap around at the ends of the file list.
     pub wrap: bool,
     pub flat: bool,
@@ -117,6 +118,7 @@ impl Default for Settings {
             fit: FitMode::Shrink,
             filter: Filter::Linear,
             zoom_step: 1.25,
+            slideshow_interval: 4.0,
             wrap: false,
             flat: false,
             preload: 2,
@@ -135,6 +137,7 @@ pub const KEYS: &[&str] = &[
     "fit",
     "filter",
     "zoom_step",
+    "slideshow_interval",
     "wrap",
     "gallery.flat",
     "preload",
@@ -168,6 +171,19 @@ impl Settings {
                 }
                 self.zoom_step = s;
             }
+            "slideshow_interval" => {
+                let seconds = parse_num(v)?;
+                let delay = std::time::Duration::try_from_secs_f64(seconds)
+                    .ok()
+                    .filter(|d| !d.is_zero())
+                    .and_then(|d| std::time::Instant::now().checked_add(d));
+                if delay.is_none() {
+                    return Err(
+                        "slideshow_interval must be a positive timer duration in seconds".into(),
+                    );
+                }
+                self.slideshow_interval = seconds;
+            }
             "gallery.flat" => self.flat = parse_bool(v, self.flat)?,
             "wrap" => self.wrap = parse_bool(v, self.wrap)?,
             "preload" => self.preload = parse_num(v)?,
@@ -199,6 +215,7 @@ impl Settings {
                 Filter::Nearest => "nearest".into(),
             }),
             "zoom_step" => Num(self.zoom_step),
+            "slideshow_interval" => Num(self.slideshow_interval),
             "gallery.flat" => Bool(self.flat),
             "wrap" => Bool(self.wrap),
             "preload" => Num(self.preload as f64),

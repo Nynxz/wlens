@@ -325,6 +325,7 @@ impl Ui {
                         })
                     };
                     n.input = Some(InputSpec {
+                        value: t.get("value")?,
                         placeholder: t.get::<Option<String>>("placeholder")?.unwrap_or_default(),
                         on_submit: act("on_submit")?,
                         on_change: act("on_change")?,
