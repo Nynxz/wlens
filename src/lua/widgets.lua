@@ -1211,8 +1211,7 @@ function W.help(o)
   return overlay(o.id or "help", panel, { scrim = o.scrim or W.style.scrim })
 end
 
--- Click the left/right edge of the window to go back/forward. The zones step
--- aside while you're zoomed in, so clicking there pans instead.
+-- Click the left/right edge of the window to go back/forward.
 --
 --   w.nav_zones {
 --     width = "15%",            -- how far in from each edge counts
@@ -1244,9 +1243,9 @@ function W.nav_zones(o)
         local can = action == "prev" and img.has_prev or action == "next" and img.has_next
         return can and "pointer" or "default"
       end,
-      -- Not while zoomed in (clicks pan) or in the gallery.
+      drag_through = true,
       show = function(img)
-        return img ~= nil and img.mode ~= "gallery" and not img.zoomed_in
+        return img ~= nil and img.mode ~= "gallery"
       end,
     }
     if indicator == "tint" then
@@ -1256,7 +1255,7 @@ function W.nav_zones(o)
       local chevron = {
         width = size, height = size, radius = W.style.pill_radius,
         text = icon, font = W.style.icon_font, font_size = math.floor(size * 0.62),
-        on_click = action, -- clicks on the button itself still navigate
+        pass_through = true, -- the zone handles clicks and drags over its icon
       }
       local reveal = o.reveal or "hover"
       local function can(img)
