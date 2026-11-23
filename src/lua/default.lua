@@ -31,6 +31,7 @@ bind("2", "zoom 200%")
 bind("3", "zoom 300%")
 
 -- fit modes
+bind("F", "fit", "Reapply current fit mode")
 bind("W", "fit contain")
 bind("w", "fit shrink")
 bind("e", "fit width")
@@ -62,7 +63,6 @@ bind("b", function()
   wlens.toggle(wlens.visible("panels") ~= nil and "panels" or "bar")
 end, "Hide bars and sidebars")
 bind("f", "fullscreen")
-bind("F", "fullscreen")
 bind("R", "reload", "Reload the image from disk")
 bind("F5", "refresh", "Refresh")
 bind("P", "animation toggle", "Play / pause animation")
@@ -82,7 +82,8 @@ bind("m", "ui toggle menu", "Menu")
 bind("s", function() wlens.widgets.slideshow() end, "Slideshow on/off")
 
 -- mouse pseudo-keys: ScrollUp/Down, ClickImage, ClickBackdrop, DoubleClick,
--- RightClick, MiddleClick, MouseBack, MouseForward (drag with the left button pans)
+-- RightClick, MiddleClick, MouseBack, MouseForward. Left drag moves the image;
+-- holding the middle button pans to the pointer's position in the viewport.
 -- Double-click: fitted -> 100% at the click point (200% if it already is
 -- 100%), zoomed -> back to fit.
 -- Video (mpv-style). Mode "video" falls back to image bindings, so n/p,

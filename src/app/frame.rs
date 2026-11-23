@@ -174,6 +174,8 @@ impl App {
         };
         self.last_frame = now;
         self.advance_animation(now);
+        // A click can change the target on the first frame after idling.
+        self.refresh_ui();
         // Lay out after animating, so an element that just finished fading
         // out collapses (and frees its space) on this frame, not never.
         self.animating = self.step(dt) || dt == 0.0 && self.needs_motion();

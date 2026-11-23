@@ -84,7 +84,8 @@ wlens.clear_slot("right")
 
 `w.slot(name, style, outer)` declares one: hidden while empty, `style` is the
 container (the theme decides what a sidebar looks like), `outer` an optional
-wrapper such as `{ padding = 18 }` for a floating panel. The `simple`
+wrapper such as `{ padding = 18 }` for a floating panel. A populated slot follows
+the theme’s `show` rule. Clearing the slot removes the widgets added by scripts. The `simple`
 and `lightbox` presets have `top` (above the main view, e.g. a page header),
 `left`, `right`, `overlay` (a layer over the main view for scripts' menus,
 dialogs and floating labels) and `bar` (simple) / `caption` (lightbox).
@@ -137,6 +138,11 @@ a bare string is a text child.
 `border = { width, color }` (or a number), `shadow = { size, color, x, y }`,
 `hover = { …style keys… }` (animated on hover).
 
+Use `selected = { when = function(img) return … end, …style keys… }` for a
+control whose appearance follows a value. Its hit area stays in place.
+A selected `justify` moves the control's children along the main axis, as
+in the settings switches. The element's `anim` controls the transition.
+
 **Content:** `text` — a template with `{name}`, `{path}`, `{dir}`, `{index}`,
 `{count}`, `{width}`, `{height}`, `{zoom}`, `{size}`, `{fit}`, `{filter}`,
 `{mode}`, `{level}`, `{depth}`, `{fitted}`, `{meta.KEY}` (a field of the
@@ -179,6 +185,8 @@ tick()
 | `input` | A text field: `{ placeholder, on_submit, on_change }` (functions of the text, or command templates with `{value}`). Needs an `id`; the text is `wlens.input(id)`. Click or `ui focus ID` to type; Enter submits, Escape leaves, Ctrl+U clears, Ctrl+Backspace deletes a word |
 | `attach`, `attach_align` | `"element id"`: placed against that element — above it if there's room, else below — like a dropdown on its button (`w.menu` attaches to its `menu_button`). Centred over it by default; `attach_align = "start"` / `"end"` lines it up with an edge. Always kept inside the window |
 | `wrap` | A row whose children flow onto new lines when they don't fit (give the row a px `width`) — e.g. tag chips |
+| `responsive` | Fit a root or floating panel to its available width. Its contents are measured at that width so wrapping rows can grow vertically. |
+| `stack` | Overlay children in one box sized to the largest child, including hidden pages. Use `show` to select a page. |
 | `scroll` | Content taller than the box scrolls with the mouse wheel and is clipped to it (the sidebar kit's body uses it) |
 | `max_height` | Cap on the height (px or `%`): an auto-height panel grows with its content but stops at the space available |
 | `layer` | `"top"`: drawn after the rest of the UI, text included, so it covers it. Menus, help, toasts and tooltips use it |

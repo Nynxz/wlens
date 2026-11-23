@@ -117,6 +117,14 @@ impl App {
                 self.sync_visibility();
             }
             Command::Copy(what) => self.copy(&what),
+            Command::Gallery(action, rows) if action == "scroll" => {
+                let grid = self.grid();
+                self.scroll_gallery(
+                    grid,
+                    ScrollInput::Wheel(-rows.unwrap_or(1.0) * grid.row_h()),
+                );
+                return;
+            }
             Command::Gallery(action, amount) => self.gallery_command(&action, amount),
             Command::Back => {
                 // One step at a time: image view -> this level's grid -> parent level.

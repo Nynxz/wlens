@@ -100,6 +100,7 @@ The defaults:
 | `g` `Home` / `G` `End` | First / last |
 | `+` `=` `-`, scroll wheel | Zoom (around the cursor) |
 | `1` `2` `3` | 100% / 200% / 300% |
+| `F` (Shift+f) | Reapply the current fit mode |
 | `w` `W` `e` `E` `c` | Fit modes (shrink, contain, width, height, cover) |
 | drag, `H J K L`, `Shift+arrows` | Pan |
 | `>` `<` `\|` `_` `r` | Rotate, flip, reset |
@@ -111,7 +112,7 @@ The defaults:
 | `y` / `Y` | Copy path / copy image |
 | `s` | Slideshow |
 | `a` / `A` | Smooth ↔ pixelated / checkerboard |
-| `f` or `Shift+f` | Toggle fullscreen |
+| `f` | Toggle fullscreen |
 | `P` | Play / pause an animated image |
 | right-click | Return to thumbnails, then up one folder |
 | `v` | Toggle the remembered flat-view setting |
@@ -135,7 +136,13 @@ In the gallery the arrows (and `h j k l`) move the selection, `PageUp` /
 
 - Click the left or right part of the window to go back/forward (invisible
   click zones; the cursor changes over them when there's somewhere to go).
-- Drag to pan. Small images can be moved within the window (`pan = "bounded"`).
+- Drag with the left button to move the image with the pointer. Small images
+  can be moved within the window (`pan = "bounded"`).
+- Hold the middle button to explore a zoomed image with a crosshair. Press near the right edge
+  to see the right side, or move to the center to see the middle. The outer
+  10% on each side reaches the corresponding image edge. When the image is
+  smaller than the viewport, middle-click to place its center at the pointer.
+  Hold and move to reposition it within your configured pan limits.
 - Scroll to zoom around the cursor; in the gallery, scroll or drag to move.
 - Click the file name in the bar to copy its path.
 - Clicking empty space closes an open menu; it never quits.
