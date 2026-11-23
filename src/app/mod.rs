@@ -16,7 +16,7 @@ use winit::platform::wayland::WindowAttributesExtWayland;
 use winit::window::{CursorIcon, Fullscreen, Window, WindowId};
 
 use crate::geom::anim::{approach, lerp};
-use crate::geom::grid::Grid;
+use crate::geom::grid::{Grid, ScrollInput};
 use crate::geom::view::{Rect, View};
 use crate::io::loader::{Decoded, Job, LoadResult, Loader, ThumbResult};
 use crate::lua::{Action, ImageInfo, ItemsOp, Script};
@@ -53,6 +53,7 @@ pub enum UserEvent {
     },
     Thumb {
         src: Source,
+        level: u32,
         result: ThumbResult,
     },
     /// From a video player (`id` = which one, so stale players are ignored).
@@ -174,6 +175,8 @@ struct Gallery {
     /// Scroll target and the animated value drawn.
     scroll: f64,
     shown: f64,
+    /// Tile held under a stationary wheel gesture as columns reflow.
+    resize_anchor: Option<((f64, f64), usize)>,
     thumbs: HashMap<Source, ThumbTex>,
     pending: HashSet<(Source, u32)>,
     failed: HashSet<Source>,

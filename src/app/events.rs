@@ -2,6 +2,17 @@
 
 use super::*;
 
+/// The binding supplies direction and sensitivity. Wheel units are rows,
+/// precision input is already in physical pixels.
+fn gallery_scroll_input(delta: MouseScrollDelta, rows: f64, row_height: f64) -> ScrollInput {
+    match delta {
+        MouseScrollDelta::LineDelta(_, lines) => {
+            ScrollInput::Wheel(-rows * f64::from(lines.abs()) * row_height)
+        }
+        MouseScrollDelta::PixelDelta(p) => ScrollInput::Pixels(-rows * p.y.abs()),
+    }
+}
+
 impl ApplicationHandler<UserEvent> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -111,7 +122,7 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             UserEvent::Loaded { src, result } => self.on_loaded(src, result),
-            UserEvent::Thumb { src, result } => self.on_thumb(src, result),
+            UserEvent::Thumb { src, level, result } => self.on_thumb(src, level, result),
             #[cfg(feature = "video")]
             UserEvent::VideoCached { src, path } => self.on_video_cached(src, path),
             #[cfg(feature = "video")]
@@ -172,7 +183,13 @@ impl ApplicationHandler<UserEvent> for App {
                 self.update_cursor();
             }
             WindowEvent::RedrawRequested => self.render(),
-            WindowEvent::ModifiersChanged(m) => self.mods = m.state(),
+            WindowEvent::ModifiersChanged(m) => {
+                if self.mods != m.state() {
+                    self.scroll_accum = 0.0;
+                    self.gallery.resize_anchor = None;
+                }
+                self.mods = m.state();
+            }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 if self.focus.is_some() && self.input_key(event_loop, &event) {
                     return;
@@ -196,9 +213,40 @@ impl ApplicationHandler<UserEvent> for App {
                         return;
                     }
                 }
-                // Touchpads send many small pixel deltas; turn them into
-                // discrete steps so `ScrollUp` binds behave like a wheel.
+                // Continuous gallery bindings consume fractional input. Other
+                // bindings (e.g. next image) still fire in discrete steps.
                 const PX_PER_STEP: f64 = 40.0;
+                let steps = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y as f64,
+                    MouseScrollDelta::PixelDelta(p) => p.y / (PX_PER_STEP * self.scale as f64),
+                };
+                if self.gallery.active && steps != 0.0 {
+                    let name = if steps > 0.0 {
+                        "scrollup"
+                    } else {
+                        "scrolldown"
+                    };
+                    let chord = Chord::named(name, self.mods);
+                    if let Some(Action::Command(Command::Gallery(action, factor))) =
+                        self.script.binding(&chord, self.mode())
+                    {
+                        if action == "scroll" {
+                            let grid = self.grid();
+                            let input =
+                                gallery_scroll_input(delta, factor.unwrap_or(1.0), grid.row_h());
+                            self.scroll_gallery(grid, input);
+                            return;
+                        }
+                        if matches!(action.as_str(), "bigger" | "smaller") {
+                            let step = factor.unwrap_or(1.15).powf(steps.abs());
+                            self.zoom_anchor = self.cursor.map(|c| (c.x, c.y));
+                            self.exec(event_loop, Command::Gallery(action, Some(step)));
+                            self.zoom_anchor = None;
+                            return;
+                        }
+                    }
+                }
+                self.gallery.resize_anchor = None;
                 let dy = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y as f64,
                     MouseScrollDelta::PixelDelta(p) => {
@@ -337,5 +385,27 @@ impl ApplicationHandler<UserEvent> for App {
             },
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn precision_scroll_follows_the_displayed_grid() {
+        let (mut shown, mut target) = (20.0, 20.0);
+        let mut apply = |delta, rows| {
+            gallery_scroll_input(delta, rows, 180.0).apply(&mut shown, &mut target, 500.0);
+            (shown, target)
+        };
+        assert_eq!(
+            apply(MouseScrollDelta::LineDelta(0.0, -1.5), 1.0),
+            (20.0, 290.0)
+        );
+        let pixel = |dy| MouseScrollDelta::PixelDelta(winit::dpi::PhysicalPosition::new(0.0, dy));
+        assert_eq!(apply(pixel(-0.25), 1.0), (20.25, 20.25));
+        assert_eq!(apply(pixel(2.0), -2.0), (16.25, 16.25));
+        assert_eq!(apply(pixel(100.0), -1.0), (0.0, 0.0));
     }
 }
