@@ -374,10 +374,10 @@ fn scroll_and_wrap() {
     for n in &mut ui.nodes {
         n.opacity = 1.0;
     }
-    assert!(ui.scroll_at((50.0, 50.0), -50.0));
+    assert!(ui.scroll_at((50.0, 50.0), ScrollInput::Pixels(-50.0)));
     ui.layout(win, 1.0, &Theme::default(), &mut Fixed);
     assert_eq!(node(&ui, "r3").0.y, 10.0);
-    assert!(ui.scroll_at((50.0, 50.0), -1000.0));
+    assert!(ui.scroll_at((50.0, 50.0), ScrollInput::Pixels(-1000.0)));
     ui.layout(win, 1.0, &Theme::default(), &mut Fixed);
     assert_eq!(node(&ui, "r10").0.y, 70.0); // last row's bottom at the box's bottom
 }
@@ -488,7 +488,7 @@ fn floating_max_height_and_wrapping_scroll() {
     }
     let chips = r(&ui, "chips");
     let before = r(&ui, "c5").y;
-    assert!(ui.scroll_at((chips.x + 5.0, chips.y + 5.0), -100.0));
+    assert!(ui.scroll_at((chips.x + 5.0, chips.y + 5.0), ScrollInput::Pixels(-100.0)));
     ui.layout(win, 1.0, &Theme::default(), &mut Fixed);
     assert_eq!(
         before - r(&ui, "c5").y,
@@ -704,7 +704,7 @@ fn padded_settings_panel_scrolls_to_its_last_control() {
         r##"return {{id="panel", dir="column", scroll=true, height=100,
         width=120, padding=10, {height=78}, {height=20, width=100, on_click="next"} }}"##,
     );
-    assert!(ui.scroll_at((50.0, 50.0), -100.0));
+    assert!(ui.scroll_at((50.0, 50.0), ScrollInput::Pixels(-100.0)));
     ui.layout(
         Rect::new(0.0, 0.0, 400.0, 300.0),
         1.0,
@@ -713,7 +713,7 @@ fn padded_settings_panel_scrolls_to_its_last_control() {
     );
     let panel = ui.roots[0];
     let last = ui.nodes[panel].children[1];
-    assert_eq!(ui.nodes[panel].scroll_y, 18.0);
+    assert_eq!(ui.nodes[panel].scroll_y.shown, 18.0);
     assert_eq!(ui.hit((50.0, 89.0)).clickable, Some(last));
 }
 
@@ -757,7 +757,55 @@ fn settings_reflow_on_resize_keeps_choices_and_tabs_reachable() {
     }
     settings_frame_at(&mut ui, 1.0, 200.0, 240.0, 1.0);
     let zoom = button(&ui, "Zoom");
-    assert!(ui.scroll_at((100.0, 120.0), -10000.0));
+    assert!(ui.scroll_at((100.0, 120.0), ScrollInput::Pixels(-10000.0)));
     settings_frame_at(&mut ui, 1.0, 200.0, 240.0, 1.0);
     settings_click(&script, &ui, ui.nodes[zoom].rect.center(), zoom);
+}
+
+#[test]
+fn short_menu_scrolls_to_last_clickable_command() {
+    let script = crate::lua::Script::new().unwrap();
+    let tree = script
+        .lua
+        .load(
+            r#"
+        return {{ id = "menu_button", anchor = "top-right", width = 24, height = 24 },
+                wlens.widgets.menu { margin = 6 }}
+    "#,
+        )
+        .eval()
+        .unwrap();
+    let mut ui = Ui::parse(tree).unwrap();
+    ui.set_forced("menu", "show").unwrap();
+    ui.refresh(&str::to_owned, &LuaValue::Nil);
+    for n in &mut ui.nodes {
+        n.vis = 1.0;
+        n.opacity = 1.0;
+    }
+    let win = Rect::new(0.0, 0.0, 420.0, 160.0);
+    let theme = Theme::default();
+    ui.layout(win, 1.0, &theme, &mut Fixed);
+    let panel = ui.nodes[ui.roots[1]].children[0];
+    let last = *ui.nodes[panel].children.last().unwrap();
+    let cursor = ui.nodes[panel].rect.center();
+    assert!(ui.scroll_at(cursor, ScrollInput::Wheel(-48.0)));
+    assert!(ui.scroll_at(cursor, ScrollInput::Wheel(-48.0)));
+    assert_eq!(ui.nodes[panel].scroll_y.shown, 0.0);
+    ui.animate(0.016, &theme, Some(cursor), true);
+    let first_frame = ui.nodes[panel].scroll_y.shown;
+    assert!(first_frame > 0.0 && first_frame < 96.0);
+    assert!(ui.scroll_at(cursor, ScrollInput::Wheel(8.0)));
+    ui.animate(0.016, &theme, Some(cursor), true);
+    assert!(ui.nodes[panel].scroll_y.shown < first_frame);
+    assert!(ui.scroll_at(cursor, ScrollInput::Pixels(-3.5)));
+    let offset = ui.nodes[panel].scroll_y;
+    assert_eq!(offset.shown, offset.target);
+    assert!(ui.scroll_at(cursor, ScrollInput::Wheel(-2000.0)));
+    for _ in 0..60 {
+        ui.animate(0.016, &theme, Some(cursor), true);
+    }
+    ui.layout(win, 1.0, &theme, &mut Fixed);
+    let point = ui.nodes[last].rect.center();
+    assert!(win.contains(point));
+    assert_eq!(ui.hit(point).clickable, Some(last));
 }
