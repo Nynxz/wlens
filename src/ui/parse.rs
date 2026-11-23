@@ -225,6 +225,7 @@ impl Ui {
                 "justify" => n.justify = as_align(&v, &key)?,
                 "tooltip" => n.tooltip = Some(as_str(&v, &key)?),
                 "follow_hover" => n.follow_hover = matches!(v, LuaValue::Boolean(true)),
+                "drag_through" => n.drag_through = matches!(v, LuaValue::Boolean(true)),
                 "pass_through" => n.pass_through = matches!(v, LuaValue::Boolean(true)),
                 "anim" => n.anim = Some(as_f32(&v, &key)?.max(0.0)),
                 "cursor" if matches!(v, LuaValue::Function(_)) => {
@@ -530,6 +531,7 @@ impl Node {
             show_fn: None,
             follow_hover: false,
             pass_through: false,
+            drag_through: false,
             pointer: true,
             cursor_fn: None,
             anim: None,

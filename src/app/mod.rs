@@ -119,9 +119,8 @@ struct Press {
     target: Option<usize>,
     /// Slider drags set the value instead of panning.
     slider: bool,
-    /// Pressed on the UI (a bar, a sidebar, a filmstrip): dragging from there
-    /// never pans the image or scrolls the grid.
-    on_ui: bool,
+    /// The press started on a UI control that consumes drags.
+    blocks_drag: bool,
 }
 
 struct ThumbTex {

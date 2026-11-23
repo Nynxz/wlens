@@ -201,6 +201,7 @@ tick()
 | `id` | Lets `ui show/hide/toggle ID` and `wlens.visible(ID)` refer to it |
 | `cursor` | `"pointer"` / `"default"`, or a function returning one |
 | `follow_hover` | Light up (hover style) when the parent is hovered |
+| `drag_through` | `true` lets a drag that starts on this element move the underlying view. A click still runs its action. |
 | `pass_through` | `true`: the mouse ignores this element (a tint, a caption over the image); clicks, scrolling and dragging reach whatever is below. Its children can still be clicked |
 | `anim` | Seconds for this element's fades, overriding `anim.ui` |
 
@@ -265,5 +266,6 @@ w.nav_zones {
 }
 ```
 
-Zones step aside while zoomed in (so clicks pan) and in the gallery. At the
-first/last image they stay and say so, rather than letting the click through.
+Click the left or right edge to navigate at any image zoom level. Dragging
+from either edge pans the image. The gallery uses its own navigation. At the
+start or end of the list, clicking an edge with nowhere to go reports that boundary.
