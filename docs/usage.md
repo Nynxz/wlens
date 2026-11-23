@@ -96,7 +96,7 @@ The defaults:
 | `g` `Home` / `G` `End` | First / last |
 | `+` `=` `-`, scroll wheel | Zoom (around the cursor) |
 | `1` `2` `3` | 100% / 200% / 300% |
-| `f` `w` `W` `e` `E` `c` | Fit: re-fit, shrink, contain, width, height, cover |
+| `w` `W` `e` `E` `c` | Fit modes (shrink, contain, width, height, cover) |
 | drag, `H J K L`, `Shift+arrows` | Pan |
 | `>` `<` `\|` `_` `r` | Rotate, flip, reset |
 | double-click | Toggle fit / 100% |
@@ -107,7 +107,7 @@ The defaults:
 | `y` / `Y` | Copy path / copy image |
 | `s` | Slideshow |
 | `a` / `A` | Smooth ↔ pixelated / checkerboard |
-| `F` | Fullscreen |
+| `f` or `Shift+f` | Toggle fullscreen |
 | `P` | Play / pause an animated image |
 | right-click | Return to thumbnails, then up one folder |
 | `v` | Toggle the remembered flat-view setting |

@@ -31,7 +31,6 @@ bind("2", "zoom 200%")
 bind("3", "zoom 300%")
 
 -- fit modes
-bind("f", "fit")            -- re-apply current fit mode
 bind("W", "fit contain")
 bind("w", "fit shrink")
 bind("e", "fit width")
@@ -62,6 +61,7 @@ bind("A", "set image.checker toggle", "Checkerboard")
 bind("b", function()
   wlens.toggle(wlens.visible("panels") ~= nil and "panels" or "bar")
 end, "Hide bars and sidebars")
+bind("f", "fullscreen")
 bind("F", "fullscreen")
 bind("R", "reload", "Reload the image from disk")
 bind("F5", "refresh", "Refresh")

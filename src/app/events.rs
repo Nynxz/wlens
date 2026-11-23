@@ -215,7 +215,7 @@ impl ApplicationHandler<UserEvent> for App {
                     self.slide(event_loop, i, position.x);
                 } else if let Some(press) = &mut self.press {
                     let moved = (position.x - press.at.x).hypot(position.y - press.at.y);
-                    if press.on_ui {
+                    if press.blocks_drag {
                         // A press on the UI that moves is no longer a click,
                         // but it doesn't drag what's behind the UI either.
                         press.dragged |= moved > 4.0;
@@ -283,7 +283,7 @@ impl ApplicationHandler<UserEvent> for App {
                             at,
                             dragged: false,
                             slider,
-                            on_ui: hit.over_ui,
+                            blocks_drag: hit.blocks_drag,
                         });
                         if let Some(i) = slider {
                             self.slide(event_loop, i, at.x);

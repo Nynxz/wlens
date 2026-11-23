@@ -228,6 +228,28 @@ fn video_controls_show_their_state() {
 }
 
 #[test]
+fn edge_navigation_stays_available_at_every_image_zoom() {
+    let s = Script::new().unwrap();
+    s.run_str(
+        "=nav_zones",
+        r#"
+        local zones = wlens.widgets.nav_zones { indicator = "chevron" }
+        for _, zone in ipairs({zones[1], zones[3]}) do
+          local img = {mode = "image", fitted = true, zoomed_in = false}
+          assert(zone.show(img))
+          img.zoomed_in = true
+          assert(zone.show(img), "fitted image can overflow after resize")
+          img.fitted = false
+          assert(zone.show(img), "manually zoomed images keep edge navigation")
+          img.fitted, img.mode = true, "gallery"
+          assert(not zone.show(img))
+        end
+        "#,
+    )
+    .unwrap();
+}
+
+#[test]
 fn things_in_the_view_float_over_it() {
     let s = Script::new().unwrap();
     s.run_str(

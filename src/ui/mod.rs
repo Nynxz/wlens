@@ -219,6 +219,8 @@ pub struct Node {
     /// the image); clicks, scrolling and drags reach whatever is below.
     /// Its children can still be clicked.
     pub pass_through: bool,
+    /// Handle clicks here, but let drags move the underlying view.
+    pub drag_through: bool,
     /// Pointer cursor over this clickable element (default true).
     pub pointer: bool,
     /// `cursor = function(img) return "pointer" | "default" end`
@@ -383,6 +385,7 @@ pub struct Hit {
     pub clickable: Option<usize>,
     /// Cursor is over some visible UI box (so it shouldn't count as a backdrop click).
     pub over_ui: bool,
+    pub blocks_drag: bool,
     /// Show a pointer cursor (clickable and not opted out).
     pub pointer: bool,
 }
