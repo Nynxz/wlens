@@ -284,9 +284,10 @@ impl ApplicationHandler<UserEvent> for App {
                     if let Some(p) = self.press.take()
                         && !p.dragged
                         && !p.slider
-                        && self.ui.hit((p.at.x, p.at.y)).clickable == p.target
+                        && let Some(at) = self.cursor
+                        && self.ui.hit((at.x, at.y)).clickable == p.target
                     {
-                        self.click(event_loop, p.at);
+                        self.click(event_loop, at);
                     }
                 }
                 (MouseButton::Right, ElementState::Pressed) => {
