@@ -1083,7 +1083,7 @@ function W.setting(label, control, hint)
   local st = W.style
   local left = { dir = "column", gap = 2, align = "start", grow = true,
                  { text = label, color = st.fg, text_align = "left" } }
-  if hint then left[#left + 1] = { text = hint, tooltip = hint, color = st.dim, font_size = 12, text_align = "left" } end
+  if hint then left[#left + 1] = { text = hint, tooltip = type(hint) == "string" and hint or nil, color = st.dim, font_size = 12, text_align = "left" } end
   return { dir = "row", wrap = true, width = "100%", gap = 16, padding = { 6, 0 }, left, control }
 end
 
