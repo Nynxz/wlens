@@ -214,7 +214,12 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                if let Some(i) = self.press.as_ref().and_then(|p| p.slider) {
+                if let Some(i) = self
+                    .press
+                    .as_ref()
+                    .filter(|p| p.slider)
+                    .and_then(|p| p.target)
+                {
                     self.press.as_mut().unwrap().dragged = true;
                     self.slide(event_loop, i, position.x);
                 } else if let Some(press) = &mut self.press {
@@ -289,7 +294,8 @@ impl ApplicationHandler<UserEvent> for App {
                             mods: self.mods,
                             at,
                             dragged: seek_on_press,
-                            slider,
+                            target: hit.clickable,
+                            slider: slider.is_some(),
                             blocks_drag: hit.blocks_drag,
                         });
                         if let Some(i) = slider {
@@ -303,12 +309,14 @@ impl ApplicationHandler<UserEvent> for App {
                 (MouseButton::Left | MouseButton::Middle, ElementState::Released) => {
                     if let Some(p) = self.press.take_if(|p| p.button == button)
                         && !p.dragged
-                        && p.slider.is_none()
+                        && !p.slider
+                        && let Some(at) = self.cursor
+                        && self.ui.hit((at.x, at.y)).clickable == p.target
                     {
                         if button == MouseButton::Middle {
                             self.trigger(event_loop, &Chord::named("middleclick", p.mods));
                         } else {
-                            self.click(event_loop, p.at);
+                            self.click(event_loop, at);
                         }
                     }
                     self.update_cursor();

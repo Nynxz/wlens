@@ -310,14 +310,23 @@ fn dynamic_children_rebuild_and_compact() {
             .filter_map(|n| n.id.clone())
             .collect::<Vec<_>>()
     };
-    assert!(ui.update_dynamic(&info(3), "k1"));
+    assert!(ui.update_dynamic(&info(3), "k1").is_some());
     assert_eq!(
         ids(&ui),
         ["before", "list", "row1", "row2", "row3", "after"]
     );
     // Same key: nothing rebuilt.
-    assert!(!ui.update_dynamic(&info(1), "k1"));
-    assert!(ui.update_dynamic(&info(1), "k2"));
+    assert!(ui.update_dynamic(&info(1), "k1").is_none());
+    let remap = ui.update_dynamic(&info(1), "k2").unwrap();
+    assert_eq!(
+        remap[2],
+        usize::MAX,
+        "the rebuilt row no longer owns a press"
+    );
+    assert_eq!(
+        remap[5], 3,
+        "a press on the following control survives compaction"
+    );
     assert_eq!(ids(&ui), ["before", "list", "row1", "after"]);
     // Parents come before children and links are consistent after compaction.
     for (i, n) in ui.nodes.iter().enumerate() {
@@ -570,4 +579,185 @@ fn pass_through_elements_let_the_mouse_reach_what_is_below() {
         ui.hit(ui.nodes[button].rect.center()).clickable,
         Some(button)
     );
+}
+
+fn settings_dialog() -> (crate::lua::Script, Ui) {
+    let script = crate::lua::Script::new().unwrap();
+    let tree = script
+        .lua
+        .load("return { wlens.widgets.settings() }")
+        .eval()
+        .unwrap();
+    let mut ui = Ui::parse(tree).unwrap();
+    ui.set_forced("settings", "show").unwrap();
+    settings_frame(&mut ui, 1.0);
+    (script, ui)
+}
+
+fn settings_frame(ui: &mut Ui, dt: f32) {
+    settings_frame_at(ui, dt, 900.0, 700.0, 1.0);
+}
+
+fn settings_frame_at(ui: &mut Ui, dt: f32, width: f64, height: f64, scale: f32) {
+    let theme = Theme::default();
+    ui.refresh(&str::to_owned, &LuaValue::Nil);
+    ui.animate(dt, &theme, None, false);
+    ui.layout(
+        Rect::new(0.0, 0.0, width * scale as f64, height * scale as f64),
+        scale,
+        &theme,
+        &mut Fixed,
+    );
+    ui.draw(
+        scale,
+        &theme,
+        &mut Vec::new(),
+        &mut Vec::new(),
+        &mut Vec::new(),
+        &mut |_| None,
+    );
+}
+
+fn settings_click(script: &crate::lua::Script, ui: &Ui, point: (f64, f64), expected: usize) {
+    let hit = ui.hit(point);
+    assert_eq!(hit.clickable, Some(expected));
+    assert!(hit.pointer);
+    let Some(Action::Lua(action)) = &ui.nodes[expected].on_click else {
+        panic!("expected a settings callback")
+    };
+    action.call::<()>(()).unwrap();
+    let mut sh = script.shared.borrow_mut();
+    for cmd in std::mem::take(&mut sh.queue) {
+        let crate::model::command::Command::Set(key, value) = cmd else {
+            panic!("unexpected command")
+        };
+        sh.settings.set(&key, &value).unwrap();
+    }
+}
+
+#[test]
+fn settings_switch_accepts_knob_and_track_clicks_during_motion() {
+    let (script, mut ui) = settings_dialog();
+    let label = ui
+        .nodes
+        .iter()
+        .find(|n| n.text_value == "Wrap around")
+        .unwrap();
+    let row = &ui.nodes[ui.nodes[label.parent.unwrap()].parent.unwrap()];
+    let switch = row.children[1];
+    let knob = ui.nodes[switch].children[0];
+    let track = ui.nodes[switch].rect;
+    let left = ui.nodes[knob].rect.center();
+    settings_click(&script, &ui, left, switch);
+    assert!(script.shared.borrow().settings.wrap);
+    settings_frame(&mut ui, 0.016);
+    let middle = ui.nodes[knob].rect.center();
+    assert!(middle.0 > left.0 && middle.0 < track.x + track.w - 11.0);
+    assert_eq!(ui.nodes[switch].rect, track);
+    settings_click(&script, &ui, middle, switch);
+    assert!(!script.shared.borrow().settings.wrap);
+    settings_frame(&mut ui, 1.0);
+    assert_eq!(ui.nodes[knob].rect.center(), left);
+    settings_click(&script, &ui, (track.x + track.w - 2.0, left.1), switch);
+    assert!(script.shared.borrow().settings.wrap);
+}
+
+#[test]
+fn settings_choices_and_tab_targets_stay_put() {
+    let (script, mut ui) = settings_dialog();
+    let button = |ui: &Ui, label: &str| {
+        ui.nodes
+            .iter()
+            .position(|n| n.text_value == label && n.on_click.is_some())
+            .unwrap()
+    };
+    let buttons: Vec<_> = [
+        "Shrink", "Contain", "Cover", "Width", "View", "Gallery", "Video",
+    ]
+    .iter()
+    .map(|label| button(&ui, label))
+    .collect();
+    let rects: Vec<_> = buttons.iter().map(|&i| ui.nodes[i].rect).collect();
+    for k in [2, 1, 3, 5, 6, 4] {
+        settings_click(&script, &ui, rects[k].center(), buttons[k]);
+        for dt in [0.0, 0.016, 0.16, 1.0] {
+            settings_frame(&mut ui, dt);
+            assert_eq!(
+                ui.nodes[buttons[k]].selected.as_ref().unwrap().active,
+                Some(true)
+            );
+            for (&i, &rect) in buttons.iter().zip(&rects) {
+                if buttons[4..].contains(&i) || k <= 4 {
+                    assert_eq!(ui.nodes[i].rect, rect);
+                    assert_eq!(ui.hit(rect.center()).clickable, Some(i));
+                } else {
+                    assert_eq!(ui.nodes[i].rect, Rect::default());
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn padded_settings_panel_scrolls_to_its_last_control() {
+    let mut ui = build(
+        r##"return {{id="panel", dir="column", scroll=true, height=100,
+        width=120, padding=10, {height=78}, {height=20, width=100, on_click="next"} }}"##,
+    );
+    assert!(ui.scroll_at((50.0, 50.0), -100.0));
+    ui.layout(
+        Rect::new(0.0, 0.0, 400.0, 300.0),
+        1.0,
+        &Theme::default(),
+        &mut Fixed,
+    );
+    let panel = ui.roots[0];
+    let last = ui.nodes[panel].children[1];
+    assert_eq!(ui.nodes[panel].scroll_y, 18.0);
+    assert_eq!(ui.hit((50.0, 89.0)).clickable, Some(last));
+}
+
+#[test]
+fn settings_reflow_on_resize_keeps_choices_and_tabs_reachable() {
+    let (script, mut ui) = settings_dialog();
+    let panel = ui.nodes[ui.roots[0]].children[0];
+    let button = |ui: &Ui, name: &str| {
+        ui.nodes
+            .iter()
+            .position(|n| n.text_value == name && n.on_click.is_some())
+            .unwrap()
+    };
+    let width_button = button(&ui, "Width");
+    let shrink_button = button(&ui, "Shrink");
+    let video_tab = button(&ui, "Video");
+    let view_tab = button(&ui, "View");
+    for (width, scale) in [(320.0, 1.0), (180.0, 1.5), (900.0, 1.0)] {
+        settings_frame_at(&mut ui, 1.0, width, 800.0, scale);
+        let bounds = ui.nodes[panel].rect;
+        assert_eq!(bounds.w, width.min(520.0) * scale as f64);
+        for n in ui
+            .nodes
+            .iter()
+            .filter(|n| n.on_click.is_some() && n.rect.w > 0.0 && !n.layer_top)
+        {
+            assert!(n.rect.x >= bounds.x && n.rect.x + n.rect.w <= bounds.x + bounds.w);
+        }
+        if width == 180.0 {
+            assert!(ui.nodes[width_button].rect.y > ui.nodes[shrink_button].rect.y);
+            assert!(ui.nodes[video_tab].rect.y > ui.nodes[view_tab].rect.y);
+        }
+        let width_pos = ui.nodes[width_button].rect.center();
+        settings_click(&script, &ui, width_pos, width_button);
+        let view_pos = ui.nodes[view_tab].rect.center();
+        settings_click(&script, &ui, ui.nodes[video_tab].rect.center(), video_tab);
+        settings_frame_at(&mut ui, 1.0, width, 800.0, scale);
+        settings_click(&script, &ui, view_pos, view_tab);
+        settings_frame_at(&mut ui, 1.0, width, 800.0, scale);
+        assert_eq!(ui.nodes[width_button].rect.center(), width_pos);
+    }
+    settings_frame_at(&mut ui, 1.0, 200.0, 240.0, 1.0);
+    let zoom = button(&ui, "Zoom");
+    assert!(ui.scroll_at((100.0, 120.0), -10000.0));
+    settings_frame_at(&mut ui, 1.0, 200.0, 240.0, 1.0);
+    settings_click(&script, &ui, ui.nodes[zoom].rect.center(), zoom);
 }

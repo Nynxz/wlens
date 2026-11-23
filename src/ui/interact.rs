@@ -127,6 +127,15 @@ impl Ui {
             let target_hover = (hovered && n.hover.is_some()) as u8 as f64;
             let n = &mut self.nodes[i];
             let d = n.anim.unwrap_or(theme.anim_ui);
+            if let Some(s) = &mut n.selected {
+                moving |= crate::geom::anim::approach(
+                    &mut s.progress,
+                    f64::from(s.active == Some(true)),
+                    d,
+                    dt,
+                    0.005,
+                );
+            }
             moving |= crate::geom::anim::approach(&mut n.vis, target_vis, d, dt, 0.005);
             moving |= crate::geom::anim::approach(&mut n.hover_t, target_hover, d, dt, 0.005);
         }
@@ -240,12 +249,11 @@ impl Ui {
     pub fn scroll_at(&mut self, p: (f64, f64), dy: f64) -> bool {
         let hit = self.paint_order().into_iter().rev().find(|&i| {
             let n = &self.nodes[i];
-            n.scroll && self.under(i, p, 0.05) && n.content_h > n.rect.h + 0.5
+            n.scroll && self.under(i, p, 0.05) && n.max_scroll_y > 0.0
         });
         let Some(i) = hit else { return false };
         let n = &mut self.nodes[i];
-        let max = (n.content_h - n.rect.h).max(0.0);
-        n.scroll_y = (n.scroll_y - dy).clamp(0.0, max);
+        n.scroll_y = (n.scroll_y - dy).clamp(0.0, n.max_scroll_y);
         true
     }
 

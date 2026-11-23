@@ -123,8 +123,9 @@ struct Press {
     mods: ModifiersState,
     at: PhysicalPosition<f64>,
     dragged: bool,
-    /// Pressed on a slider: drags set its value instead of panning.
-    slider: Option<usize>,
+    target: Option<usize>,
+    /// Slider drags set the value instead of panning.
+    slider: bool,
     /// The press started on a UI control that consumes drags.
     blocks_drag: bool,
 }
