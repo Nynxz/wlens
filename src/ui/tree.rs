@@ -84,7 +84,7 @@ impl Ui {
         }
     }
 
-    fn runtime_preorder(&self, i: usize, out: &mut Vec<(f64, f64, f64)>) {
+    fn runtime_preorder(&self, i: usize, out: &mut Vec<(f64, f64, ScrollOffset)>) {
         let n = &self.nodes[i];
         out.push((n.vis, n.hover_t, n.scroll_y));
         for &c in &n.children {

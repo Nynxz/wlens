@@ -91,9 +91,6 @@ impl Ui {
 
     fn finish_layout(&mut self, win: Rect, scale: f32, theme: &Theme, m: &mut dyn Measure) {
         // Clip rectangles from scrolling ancestors.
-        for r in self.roots.clone() {
-            self.assign_clip(r, None, scale);
-        }
         // Attached elements (dropdowns) move next to their target.
         let gap = (6.0 * scale) as f64;
         for i in 0..self.nodes.len() {
@@ -127,6 +124,10 @@ impl Ui {
             };
             let y = y.min(win.y + win.h - r.h).max(win.y);
             self.arrange(i, Rect::new(x, y, r.w, r.h), scale, theme, m);
+        }
+        // Attached panels now have their final position, including their scroll clip.
+        for r in self.roots.clone() {
+            self.assign_clip(r, None, scale);
         }
         if let Some((i, _)) = self.tip {
             let n = &self.nodes[i];
@@ -387,7 +388,7 @@ impl Ui {
         }
         if children.is_empty() {
             self.nodes[i].max_scroll_y = 0.0;
-            self.nodes[i].scroll_y = 0.0;
+            self.nodes[i].scroll_y = ScrollOffset::default();
             return;
         }
 
@@ -443,8 +444,7 @@ impl Ui {
             let off = if scrolls {
                 let n = &mut self.nodes[i];
                 n.max_scroll_y = (content - inner.h).max(0.0);
-                n.scroll_y = n.scroll_y.clamp(0.0, n.max_scroll_y);
-                n.scroll_y
+                n.scroll_y.clamp(n.max_scroll_y)
             } else {
                 0.0
             };
@@ -554,8 +554,7 @@ impl Ui {
             let content = fixed + gaps;
             let n = &mut self.nodes[i];
             n.max_scroll_y = (content - main_avail).max(0.0);
-            n.scroll_y = n.scroll_y.clamp(0.0, n.max_scroll_y);
-            n.scroll_y
+            n.scroll_y.clamp(n.max_scroll_y)
         } else {
             0.0
         };

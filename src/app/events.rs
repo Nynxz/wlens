@@ -185,11 +185,13 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::MouseWheel { delta, .. } => {
                 // A scrollable UI area under the cursor (e.g. a long sidebar) takes it.
                 if let Some(c) = self.cursor {
-                    let px = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => y as f64 * 48.0 * self.scale as f64,
-                        MouseScrollDelta::PixelDelta(p) => p.y,
+                    let input = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => {
+                            ui::ScrollInput::Wheel(y as f64 * 48.0 * self.scale as f64)
+                        }
+                        MouseScrollDelta::PixelDelta(p) => ui::ScrollInput::Pixels(p.y),
                     };
-                    if self.ui.scroll_at((c.x, c.y), px) {
+                    if self.ui.scroll_at((c.x, c.y), input) {
                         self.redraw();
                         return;
                     }
