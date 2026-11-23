@@ -360,12 +360,13 @@ impl ApplicationHandler<UserEvent> for App {
                     if let Some(p) = self.press.take_if(|p| p.button == button)
                         && !p.dragged
                         && !p.slider
-                        && self.ui.hit((p.at.x, p.at.y)).clickable == p.target
+                        && let Some(at) = self.cursor
+                        && self.ui.hit((at.x, at.y)).clickable == p.target
                     {
                         if button == MouseButton::Middle {
                             self.trigger(event_loop, &Chord::named("middleclick", p.mods));
                         } else {
-                            self.click(event_loop, p.at);
+                            self.click(event_loop, at);
                         }
                     }
                     self.update_cursor();
