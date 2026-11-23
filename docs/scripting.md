@@ -52,7 +52,7 @@ HTTP requests) that the viewer carries out after they return.
 | `store.get(key)`, `store.set(key, value)` | This script's own remembered values (strings, numbers, booleans, tables), kept between runs — e.g. the last folder or sort order. `set(key, nil)` forgets |
 | `input(id [, text])` | Get / set a text field's text |
 | `slot(name, widget)`, `clear_slot(name)` | Add to / empty a theme's slot (see [UI](ui.md#regions-and-slots)) |
-| `list_dir(path)` | `{ {name, path, dir, image, video}, … }`, sorted |
+| `list_dir(path)` | `{ {name, path, dir, image, video, archive}, … }`, in natural name order |
 
 **Time, processes, network**
 

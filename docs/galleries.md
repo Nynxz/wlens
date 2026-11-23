@@ -41,7 +41,9 @@ wlens.set_items {
 
 `wlens --browse ~/Pictures`, or `wlens.widgets.browse(path)`: subfolders come
 first as tiles (covered by their first image, with an image count), then the
-folder's images. Opening a folder enters it.
+folder's images. Local archives also appear as tiles. Opening an archive
+lists its image pages in a new grid. Back returns to the folder with the
+archive still selected. Browsing the parent folder leaves its archives packed.
 
 ## Items
 

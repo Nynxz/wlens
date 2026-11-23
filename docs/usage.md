@@ -8,13 +8,35 @@ With no arguments wlens opens the images in the current directory. `-`
 reads paths or URLs from stdin, one per line. `http(s)://` arguments are
 downloaded in the background and cached.
 
+## Viewing images in archives
+
+`wlens photos.zip` opens the first image. Use `wlens -n 12 photos.zip`
+to start on the twelfth image, or `wlens --browse photos.zip` to open the
+thumbnail grid. ZIP, RAR, 7z, tar and common compressed tar formats are
+supported, including the CBZ, CBR, CB7 and CBT extensions. Images in
+subfolders are included and sorted by their full entry names, so
+`trip2/photo9.jpg` comes before `trip2/photo10.jpg` and `trip10/photo1.jpg`.
+
+When you first view an image or request its thumbnail, a background worker
+extracts the images in archive order. Solid archives need just one
+decompression pass. Extracted images are stored under
+`$XDG_CACHE_HOME/wlens/archives` (normally `~/.cache/wlens/archives`) with
+hashed names. Later sessions reuse them. Editing or replacing an archive
+creates a new cache directory. You can remove the archives cache while
+wlens is closed to reclaim space.
+
+An archive can have up to 10,000 entries, 256 MiB per image and 2 GiB of
+uncompressed content in total. Archive pages use the viewer's supported
+image formats and must be unencrypted. Each page is limited to 64 megapixels
+(64 × 1024² pixels) and 256 MiB of decoded pixel data before display or thumbnailing.
+
 ## Flags
 
 | Flag | |
 |---|---|
 | `-r, --recursive` | Include images in subdirectories |
 | `-S, --siblings` | Given one file, browse the other images in its folder |
-| `-b, --browse` | Folders become tiles you can open (see [Galleries](galleries.md)) |
+| `-b, --browse` | Folders and archives become tiles you can open (see [Galleries](galleries.md)) |
 | `-n, --start N` | Start at the Nth image (1-based) |
 | `-f, --fullscreen` | Start fullscreen |
 | `-t, --theme NAME` | `minimal`, `simple`, `lightbox`, or your own; overrides `wlens.use()` in configs. Env: `WLENS_THEME` |

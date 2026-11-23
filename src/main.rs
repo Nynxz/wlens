@@ -16,7 +16,7 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
-    /// Files, directories or http(s) URLs to open. Use `-` to read them from stdin.
+    /// Images, videos, archives, directories or http(s) URLs. Use `-` to read them from stdin.
     files: Vec<PathBuf>,
     /// Recurse into directories.
     #[arg(short, long)]
@@ -33,7 +33,7 @@ struct Cli {
     /// Config file (default: $XDG_CONFIG_HOME/wlens/init.lua).
     #[arg(short, long)]
     config: Option<PathBuf>,
-    /// Browse folders: subfolders become openable tiles in the gallery.
+    /// Browse folders with openable subfolder and archive tiles in the gallery.
     #[arg(short, long)]
     browse: bool,
     /// Theme to use: minimal, simple, lightbox, or one of yours in
@@ -155,7 +155,13 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    if cli.browse {
+    if cli.browse
+        && matches!(cli.files.as_slice(), [p] if io::archive::is_archive(p) && p.is_file())
+    {
+        script
+            .run_str("=browse", "wlens.gallery('open')")
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+    } else if cli.browse {
         let dir = cli
             .files
             .first()

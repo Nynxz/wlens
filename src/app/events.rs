@@ -94,6 +94,22 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
+            UserEvent::ArchiveListed { path, result } => {
+                if self.listing_archive.as_ref() == Some(&path) {
+                    self.listing_archive = None;
+                    match result {
+                        Ok(pages) => {
+                            let title = self.items.get(self.index).map(Item::name);
+                            self.push_level(
+                                pages.into_iter().map(Item::new).collect(),
+                                None,
+                                title,
+                            );
+                        }
+                        Err(e) => self.toast(&e),
+                    }
+                }
+            }
             UserEvent::Loaded { src, result } => self.on_loaded(src, result),
             UserEvent::Thumb { src, result } => self.on_thumb(src, result),
             #[cfg(feature = "video")]

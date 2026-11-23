@@ -1,4 +1,4 @@
-//! What the viewer browses: a list of items, each a local file or a URL,
+//! What the viewer browses: a list of files, archive pages or URLs,
 //! with an optional label. Scripts can replace the list (`wlens.set_items`),
 //! so a gallery can come from anywhere.
 
@@ -8,12 +8,22 @@ use std::path::{Path, PathBuf};
 pub enum Source {
     Path(PathBuf),
     Url(String),
+    Archive { archive: PathBuf, entry: String },
 }
 
 impl Source {
     pub fn parse(s: &str) -> Self {
         if s.starts_with("http://") || s.starts_with("https://") {
             Self::Url(s.to_string())
+        } else if let Some(uri) = s.strip_prefix("wlens-archive:")
+            && let Ok(url) = url::Url::parse(uri)
+            && let Ok(archive) = url.to_file_path()
+            && let Some((_, entry)) = url.query_pairs().find(|(key, _)| key == "entry")
+        {
+            Self::Archive {
+                archive,
+                entry: entry.into_owned(),
+            }
         } else {
             Self::Path(PathBuf::from(s.strip_prefix("file://").unwrap_or(s)))
         }
@@ -24,12 +34,20 @@ impl Source {
         match self {
             Self::Path(p) => p.to_string_lossy().into_owned(),
             Self::Url(u) => u.clone(),
+            Self::Archive { archive, entry } => {
+                // Archive discovery canonicalizes the path. File URLs also
+                // preserve non-UTF-8 bytes in the archive's own name.
+                let mut url = url::Url::from_file_path(archive).expect("absolute archive path");
+                url.query_pairs_mut().append_pair("entry", entry);
+                format!("wlens-archive:{url}")
+            }
         }
     }
 
     /// Last path segment, without a URL's query string.
     pub fn file_name(&self) -> String {
         match self {
+            Self::Archive { entry, .. } => entry.rsplit('/').next().unwrap_or(entry).to_owned(),
             Self::Path(p) => p
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -49,7 +67,7 @@ impl Source {
     pub fn local_path(&self) -> Option<&Path> {
         match self {
             Self::Path(p) => Some(p),
-            Self::Url(_) => None,
+            Self::Url(_) | Self::Archive { .. } => None,
         }
     }
 
@@ -61,6 +79,7 @@ impl Source {
     /// (percent-encoded) for files, the URL itself otherwise.
     pub fn uri(&self) -> String {
         match self {
+            Self::Archive { .. } => self.as_string(),
             Self::Url(u) => u.clone(),
             Self::Path(p) => {
                 let abs = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
