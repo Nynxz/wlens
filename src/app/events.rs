@@ -60,6 +60,7 @@ impl ApplicationHandler<UserEvent> for App {
         self.window = Some(window);
 
         self.layout_ui();
+        self.update_browser_view();
         self.sync();
         self.script.emit("start");
         self.drain_queue(event_loop);
@@ -105,6 +106,21 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
+            UserEvent::ArchiveListed { path, result } => {
+                if self.listing_archive.as_ref() == Some(&path) {
+                    self.listing_archive = None;
+                    match result {
+                        Ok(pages) => {
+                            let title = self.items.get(self.index).map(Item::name);
+                            self.open_archive_folder(
+                                crate::model::archive_folder::ArchiveFolder::opened(&path, pages),
+                                title,
+                            );
+                        }
+                        Err(e) => self.toast(&e),
+                    }
+                }
+            }
             UserEvent::Loaded { src, result } => self.on_loaded(src, result),
             UserEvent::Thumb { src, level, result } => self.on_thumb(src, level, result),
             #[cfg(feature = "video")]
@@ -162,6 +178,10 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 self.redraw();
             }
+            WindowEvent::Focused(false) => {
+                self.press = None;
+                self.update_cursor();
+            }
             WindowEvent::RedrawRequested => self.render(),
             WindowEvent::ModifiersChanged(m) => {
                 if self.mods != m.state() {
@@ -182,11 +202,13 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::MouseWheel { delta, .. } => {
                 // A scrollable UI area under the cursor (e.g. a long sidebar) takes it.
                 if let Some(c) = self.cursor {
-                    let px = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => y as f64 * 48.0 * self.scale as f64,
-                        MouseScrollDelta::PixelDelta(p) => p.y,
+                    let input = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => {
+                            ui::ScrollInput::Wheel(y as f64 * 48.0 * self.scale as f64)
+                        }
+                        MouseScrollDelta::PixelDelta(p) => ui::ScrollInput::Pixels(p.y),
                     };
-                    if self.ui.scroll_at((c.x, c.y), px) {
+                    if self.ui.scroll_at((c.x, c.y), input) {
                         self.redraw();
                         return;
                     }
@@ -242,12 +264,17 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                if let Some(i) = self.press.as_ref().and_then(|p| p.slider) {
+                if let Some(i) = self
+                    .press
+                    .as_ref()
+                    .filter(|p| p.slider)
+                    .and_then(|p| p.target)
+                {
                     self.press.as_mut().unwrap().dragged = true;
                     self.slide(event_loop, i, position.x);
                 } else if let Some(press) = &mut self.press {
                     let moved = (position.x - press.at.x).hypot(position.y - press.at.y);
-                    if press.on_ui {
+                    if press.blocks_drag {
                         // A press on the UI that moves is no longer a click,
                         // but it doesn't drag what's behind the UI either.
                         press.dragged |= moved > 4.0;
@@ -261,6 +288,8 @@ impl ApplicationHandler<UserEvent> for App {
                             let max = g.max_scroll(self.grid_len(&g));
                             self.gallery.scroll = (self.gallery.scroll - dy).clamp(0.0, max);
                             self.gallery.shown = self.gallery.scroll;
+                        } else if press.button == MouseButton::Middle {
+                            self.pan_to_pointer(position);
                         } else {
                             self.sync_pan_mode();
                             let (img, vp) = (self.img_size(), self.viewport);
@@ -276,20 +305,7 @@ impl ApplicationHandler<UserEvent> for App {
                 self.cursor = Some(position);
                 self.last_motion = Instant::now();
                 let p = (position.x, position.y);
-                let ui_hit = self.ui.hit(p);
-                let thumb = if self.gallery.active && !ui_hit.over_ui {
-                    self.grid()
-                        .index_at(p, self.gallery.shown, self.items.len())
-                } else {
-                    None
-                };
-                if let Some(w) = &self.window {
-                    w.set_cursor(if ui_hit.pointer || thumb.is_some() {
-                        CursorIcon::Pointer
-                    } else {
-                        CursorIcon::Default
-                    });
-                }
+                let thumb = self.update_cursor();
                 // Mouse motion alone changes nothing on screen unless it
                 // drags, moves between hover targets, or reveals controls.
                 let hover = (self.ui.hover_key(p), thumb);
@@ -307,34 +323,56 @@ impl ApplicationHandler<UserEvent> for App {
                 self.redraw();
             }
             WindowEvent::MouseInput { state, button, .. } => match (button, state) {
-                (MouseButton::Left, ElementState::Pressed) => {
-                    if let Some(at) = self.cursor {
+                (MouseButton::Left | MouseButton::Middle, ElementState::Pressed) => {
+                    if self.press.is_none()
+                        && let Some(at) = self.cursor
+                    {
                         let hit = self.ui.hit((at.x, at.y));
-                        let slider = hit.clickable.filter(|&i| self.ui.nodes[i].slider.is_some());
+                        let slider = hit.clickable.filter(|&i| {
+                            button == MouseButton::Left && self.ui.nodes[i].slider.is_some()
+                        });
+                        // A custom click binding gets a chance to run without moving the view.
+                        let seek_on_press = button == MouseButton::Middle
+                            && !hit.blocks_drag
+                            && !self.gallery.active
+                            && self
+                                .script
+                                .binding(&Chord::named("middleclick", self.mods), self.mode())
+                                .is_none();
                         self.press = Some(Press {
+                            button,
+                            mods: self.mods,
                             at,
-                            dragged: false,
-                            slider,
-                            on_ui: hit.over_ui,
+                            dragged: seek_on_press,
+                            target: hit.clickable,
+                            slider: slider.is_some(),
+                            blocks_drag: hit.blocks_drag,
                         });
                         if let Some(i) = slider {
                             self.slide(event_loop, i, at.x);
+                        } else if seek_on_press {
+                            self.pan_to_pointer(at);
+                            self.update_cursor();
                         }
                     }
                 }
-                (MouseButton::Left, ElementState::Released) => {
-                    if let Some(p) = self.press.take()
+                (MouseButton::Left | MouseButton::Middle, ElementState::Released) => {
+                    if let Some(p) = self.press.take_if(|p| p.button == button)
                         && !p.dragged
-                        && p.slider.is_none()
+                        && !p.slider
+                        && let Some(at) = self.cursor
+                        && self.ui.hit((at.x, at.y)).clickable == p.target
                     {
-                        self.click(event_loop, p.at);
+                        if button == MouseButton::Middle {
+                            self.trigger(event_loop, &Chord::named("middleclick", p.mods));
+                        } else {
+                            self.click(event_loop, at);
+                        }
                     }
+                    self.update_cursor();
                 }
                 (MouseButton::Right, ElementState::Pressed) => {
                     self.trigger(event_loop, &Chord::named("rightclick", self.mods));
-                }
-                (MouseButton::Middle, ElementState::Pressed) => {
-                    self.trigger(event_loop, &Chord::named("middleclick", self.mods));
                 }
                 // The side buttons (browser-style back / forward).
                 (MouseButton::Back, ElementState::Pressed) => {

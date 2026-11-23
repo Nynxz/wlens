@@ -89,10 +89,13 @@ impl Ui {
             return;
         }
         let n = &self.nodes[i];
-        let style = match &n.hover {
+        let mut style = match &n.hover {
             Some(h) => n.style.lerp(h, n.hover_t as f32),
             None => n.style.clone(),
         };
+        if let Some(s) = &n.selected {
+            style = style.lerp(&s.style, s.progress as f32);
+        }
         let op = parent_op * n.vis as f32 * style.opacity;
         self.nodes[i].opacity = op;
         if op <= 0.003 {

@@ -50,6 +50,7 @@ pub enum Command {
     Gallery(String, Option<f64>),
     /// Leave the current level (see `wlens.push_items`).
     Back,
+    Forward,
     /// Open the current item: enter a container, or view an image.
     Open,
     /// Re-fetch the list (fires the `refresh` hook; else reloads the image).
@@ -187,6 +188,7 @@ impl std::str::FromStr for Command {
                 Command::Copy(args[0].into())
             }
             "back" => Command::Back,
+            "forward" => Command::Forward,
             "open" => Command::Open,
             "refresh" => Command::Refresh,
             "video" => {
@@ -216,7 +218,7 @@ impl std::str::FromStr for Command {
             "gallery" | "grid" => {
                 const ACTIONS: &[&str] = &[
                     "toggle", "open", "close", "up", "down", "left", "right", "pageup", "pagedown",
-                    "bigger", "smaller", "scroll",
+                    "bigger", "smaller", "scroll", "flat",
                 ];
                 let action = args.first().copied().unwrap_or("toggle");
                 if !ACTIONS.contains(&action) {

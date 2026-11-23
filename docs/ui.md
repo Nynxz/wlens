@@ -137,6 +137,11 @@ a bare string is a text child.
 `border = { width, color }` (or a number), `shadow = { size, color, x, y }`,
 `hover = { …style keys… }` (animated on hover).
 
+Use `selected = { when = function(img) return … end, …style keys… }` for a
+control whose appearance follows a value. Its hit area stays in place.
+A selected `justify` moves the control's children along the main axis, as
+in the settings switches. The element's `anim` controls the transition.
+
 **Content:** `text` — a template with `{name}`, `{path}`, `{dir}`, `{index}`,
 `{count}`, `{width}`, `{height}`, `{zoom}`, `{size}`, `{fit}`, `{filter}`,
 `{mode}`, `{level}`, `{depth}`, `{fitted}`, `{meta.KEY}` (a field of the
@@ -179,6 +184,8 @@ tick()
 | `input` | A text field: `{ placeholder, on_submit, on_change }` (functions of the text, or command templates with `{value}`). Needs an `id`; the text is `wlens.input(id)`. Click or `ui focus ID` to type; Enter submits, Escape leaves, Ctrl+U clears, Ctrl+Backspace deletes a word |
 | `attach`, `attach_align` | `"element id"`: placed against that element — above it if there's room, else below — like a dropdown on its button (`w.menu` attaches to its `menu_button`). Centred over it by default; `attach_align = "start"` / `"end"` lines it up with an edge. Always kept inside the window |
 | `wrap` | A row whose children flow onto new lines when they don't fit (give the row a px `width`) — e.g. tag chips |
+| `responsive` | Fit a root or floating panel to its available width. Its contents are measured at that width so wrapping rows can grow vertically. |
+| `stack` | Overlay children in one box sized to the largest child, including hidden pages. Use `show` to select a page. |
 | `scroll` | Content taller than the box scrolls with the mouse wheel and is clipped to it (the sidebar kit's body uses it) |
 | `max_height` | Cap on the height (px or `%`): an auto-height panel grows with its content but stops at the space available |
 | `layer` | `"top"`: drawn after the rest of the UI, text included, so it covers it. Menus, help, toasts and tooltips use it |
@@ -194,6 +201,7 @@ tick()
 | `id` | Lets `ui show/hide/toggle ID` and `wlens.visible(ID)` refer to it |
 | `cursor` | `"pointer"` / `"default"`, or a function returning one |
 | `follow_hover` | Light up (hover style) when the parent is hovered |
+| `drag_through` | `true` lets a drag that starts on this element move the underlying view. A click still runs its action. |
 | `pass_through` | `true`: the mouse ignores this element (a tint, a caption over the image); clicks, scrolling and dragging reach whatever is below. Its children can still be clicked |
 | `anim` | Seconds for this element's fades, overriding `anim.ui` |
 
@@ -223,7 +231,8 @@ table, so `wlens.extend(widget, { ... })` restyles it.
 | `setting(label, control, hint)`, `toggle(key, {on, off})`, `choice(key, { {label, value}… })`, `range(key, min, max, {step})` | Settings rows and controls bound to an option: they show its current value and run `set key value` (applied at once, remembered next run) |
 | `label(text, opts)` | Any text |
 | `button(icon_or_text, action, tooltip, opts)` | Tooltip includes the bound key. Also takes one table: `w.button{ icon = …, action = …, tooltip = …, color = … }` (likewise `rail_button{ icon, … }` and `action{ label, … }`) |
-| `menu_button()`, `back_button()`, `refresh_button()`, `gallery_button()`, `help_button()` | The presets' buttons (each has that id) |
+| `navigation_button()` | Back returns to the thumbnail grid, then goes up one folder. The toolbar reserves its space at the root. |
+| `menu_button()`, `back_button()`, `refresh_button()`, `gallery_button()`, `help_button()` | Individual buttons for custom layouts (each has that id) |
 | `rail_button(icon, action, tooltip)` | A button for a collapsed sidebar's rail |
 | `icon(glyph_or_url, size, color)` | An icon: a glyph, or a picture from a path or URL |
 | `menu { items, position, margin, width }` | Items `{ label, action [, hint] }` or `"-"` (default `w.default_menu`); key hints come from your bindings |
@@ -258,5 +267,6 @@ w.nav_zones {
 }
 ```
 
-Zones step aside while zoomed in (so clicks pan) and in the gallery. At the
-first/last image they stay and say so, rather than letting the click through.
+Click the left or right edge to navigate at any image zoom level. Dragging
+from either edge pans the image. The gallery uses its own navigation. At the
+start or end of the list, clicking an edge with nowhere to go reports that boundary.

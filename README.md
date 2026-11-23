@@ -19,7 +19,7 @@ a folder browser.
 - **Viewing:** zoom and pan are GPU-rendered (wgpu). EXIF orientation is
   applied and neighbouring images are preloaded.
 - **Galleries:** a thumbnail grid using the shared freedesktop thumbnail cache.
-  Folders can be browsed as nested galleries.
+  Folders and image archives can be browsed as nested galleries.
 - **Animation and video:** animated GIF, WebP and APNG play. Video (WebM, MP4,
   MKV and others, local or streamed) is supported through GStreamer, with
   seeking and volume.
@@ -54,7 +54,8 @@ a folder browser.
 
 ## Getting started
 
-wlens needs Rust 1.96 or newer, and GStreamer with gst-plugins-base for
+wlens needs Rust 1.96 or newer, libarchive (with headers and pkg-config for
+building), and GStreamer with gst-plugins-base for
 video. To build without video, add `--no-default-features`. It's developed and
 tested on Hyprland, and should work on any Wayland compositor.
 
@@ -65,6 +66,7 @@ On Arch, install [`wlens` from the AUR](https://aur.archlinux.org/packages/wlens
 cargo install --git https://github.com/Nynxz/wlens   # or, in a clone: cargo install --path .
 
 wlens ~/Pictures                          # view a folder
+wlens photos.zip                          # view archived images in natural order
 wlens -S photo.jpg                        # open one file, browse its folder
 wlens --browse ~/Pictures                 # folders as a gallery you can step into
 wlens --theme lightbox --palette gruvbox  # pick a look for this run

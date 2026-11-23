@@ -30,7 +30,7 @@ pub struct ImageInfo {
     /// The current item's picture isn't on screen yet (downloading, decoding).
     pub loading: bool,
     pub depth: usize,
-    /// Title of the current level (from `push_items`), if any.
+    /// Name of the open archive or directory, or the title supplied by a script.
     pub level: Option<String>,
     /// Animated images: frame count (0 for stills) and current frame (1-based).
     pub frames: usize,

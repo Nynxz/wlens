@@ -95,6 +95,7 @@ pub struct Settings {
     pub zoom_step: f64,
     /// Wrap around at the ends of the file list.
     pub wrap: bool,
+    pub flat: bool,
     /// How many images to decode ahead/behind the current one.
     pub preload: usize,
     /// Decoded-image cache budget in MiB.
@@ -117,6 +118,7 @@ impl Default for Settings {
             filter: Filter::Linear,
             zoom_step: 1.25,
             wrap: false,
+            flat: false,
             preload: 2,
             cache_mb: 512,
             remote_cache_mb: 2048,
@@ -134,6 +136,7 @@ pub const KEYS: &[&str] = &[
     "filter",
     "zoom_step",
     "wrap",
+    "gallery.flat",
     "preload",
     "cache_mb",
     "remote_cache_mb",
@@ -165,6 +168,7 @@ impl Settings {
                 }
                 self.zoom_step = s;
             }
+            "gallery.flat" => self.flat = parse_bool(v, self.flat)?,
             "wrap" => self.wrap = parse_bool(v, self.wrap)?,
             "preload" => self.preload = parse_num(v)?,
             "cache_mb" => self.cache_mb = parse_num(v)?,
@@ -195,6 +199,7 @@ impl Settings {
                 Filter::Nearest => "nearest".into(),
             }),
             "zoom_step" => Num(self.zoom_step),
+            "gallery.flat" => Bool(self.flat),
             "wrap" => Bool(self.wrap),
             "preload" => Num(self.preload as f64),
             "cache_mb" => Num(self.cache_mb as f64),
