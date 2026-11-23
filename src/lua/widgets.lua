@@ -1066,6 +1066,8 @@ function W.default_settings_tabs()
               "How images fit the window"),
     W.setting("Smooth scaling", W.toggle("filter", { on = "linear", off = "nearest" }), "Off: crisp pixels when zoomed in"),
     W.setting("Checkerboard", W.toggle("image.checker"), "Behind transparent images"),
+    W.setting("Slideshow interval", W.range("slideshow_interval", 1, 60, { step = 1 }),
+              function() return string.format("%g s per image", wlens.opt.slideshow_interval) end),
     W.setting("Wrap around", W.toggle("wrap"), "Go from the last image to the first"),
     W.setting("Small images", W.choice("pan", { { "Centred", "center" }, { "Movable", "bounded" }, { "Free", "free" } })),
     W.setting("Transition", W.choice("transition.kind", { { "None", "none" }, { "Fade", "fade" }, { "Slide", "slide" }, { "Zoom", "zoom" } })),
@@ -1347,22 +1349,46 @@ function wlens.toast(msg, secs)
 end
 
 -- Slideshow: W.slideshow() toggles, W.slideshow(5) starts with 5s per image.
-local slide
-function W.slideshow(secs)
-  if slide and not secs then
-    wlens.cancel(slide)
-    slide = nil
-    wlens.toast("Slideshow off")
-    return
-  end
-  if slide then wlens.cancel(slide) end
-  secs = secs or W.slide_secs or 4
-  local function tick()
+local slide, override
+local function schedule_slide()
+  local id
+  id = wlens.after(override or wlens.opt.slideshow_interval, function()
+    if slide ~= id then return end
     wlens.next()
-    slide = wlens.after(secs, tick)
-  end
-  slide = wlens.after(secs, tick)
-  wlens.toast(string.format("Slideshow: %gs per image", secs))
+    schedule_slide()
+  end)
+  slide = id
 end
 
-return W
+wlens.on("slideshow_interval_changed", function()
+  if slide and not override then
+    wlens.cancel(slide)
+    schedule_slide()
+  end
+end)
+
+function W.slideshow(secs)
+  if slide then
+    wlens.cancel(slide)
+    slide = nil
+    if not secs then
+      wlens.toast("Slideshow off")
+      return
+    end
+  end
+  override = secs
+  schedule_slide()
+  wlens.toast(string.format("Slideshow: %gs per image", secs or wlens.opt.slideshow_interval))
+end
+
+-- Older configs assign widgets.slide_secs directly. Route that spelling to
+-- the same option so the dialog and remembered preferences stay in sync.
+return setmetatable(W, {
+  __index = function(_, key)
+    if key == "slide_secs" then return wlens.opt.slideshow_interval end
+  end,
+  __newindex = function(t, key, value)
+    if key == "slide_secs" then wlens.opt.slideshow_interval = value or 4
+    else rawset(t, key, value) end
+  end,
+})

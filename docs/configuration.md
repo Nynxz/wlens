@@ -35,6 +35,7 @@ print(wlens.opt.wrap)
 | `fit` | `none` `shrink` `contain` `cover` `width` `height` | `shrink` | How images fit the window |
 | `filter` | `linear` `nearest` | `linear` | How zoomed-in pixels look |
 | `zoom_step` | number > 1 | `1.25` | Factor per zoom in/out |
+| `slideshow_interval` | seconds > 0 | `4` | Time per image. Settings → View offers 1–60 seconds. |
 | `wrap` | bool | `false` | Loop past the first/last image |
 | `pan` | `center` `bounded` `free` | `bounded` | Small images: fixed in the centre / draggable within the window / anywhere |
 | `preload` | number | `2` | Images decoded ahead and behind |

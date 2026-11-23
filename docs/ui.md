@@ -232,7 +232,7 @@ table, so `wlens.extend(widget, { ... })` restyles it.
 | `toast()` + `wlens.toast(msg, secs)` | Transient messages |
 | `nav_zones { width, indicator, reveal, … }` | Click the edges to go back/forward |
 | `browse(path)` | Folder levels (see [Galleries](galleries.md)) |
-| `slideshow(secs)` | Toggle a slideshow |
+| `slideshow([secs])` | Toggle a slideshow using the saved interval. Pass seconds to start or restart with that delay for this run. |
 | `list(…)` | Build a UI list, skipping `false`/`nil` entries |
 | `viewing`, `browsing`, `video_mode` | Ready-made `show` functions: only while viewing an image / video, only in the grid, or only for a video outside the grid (`show = w.viewing`) |
 | `palette(spec)`, `apply_palette(spec)`, `try_palette(spec)`, `palette_names()` | Resolve a palette to its colours; apply one to `w.style` and the theme (`try_palette` only warns if it's missing); list the palettes (as `--list-palettes`) |
