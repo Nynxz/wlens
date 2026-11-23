@@ -309,6 +309,7 @@ impl Ui {
         Hit {
             clickable,
             over_ui: top.is_some(),
+            blocks_drag: top.is_some_and(|i| !self.nodes[i].drag_through),
             pointer: top.is_some_and(|i| active(i) && self.nodes[i].pointer),
         }
     }
