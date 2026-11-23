@@ -49,6 +49,7 @@ impl ApplicationHandler<UserEvent> for App {
         self.window = Some(window);
 
         self.layout_ui();
+        self.update_browser_view();
         self.sync();
         self.script.emit("start");
         self.drain_queue(event_loop);
@@ -100,9 +101,8 @@ impl ApplicationHandler<UserEvent> for App {
                     match result {
                         Ok(pages) => {
                             let title = self.items.get(self.index).map(Item::name);
-                            self.push_level(
-                                pages.into_iter().map(Item::new).collect(),
-                                None,
+                            self.open_archive_folder(
+                                crate::model::archive_folder::ArchiveFolder::opened(&path, pages),
                                 title,
                             );
                         }

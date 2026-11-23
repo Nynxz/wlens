@@ -27,7 +27,7 @@ its own.
 The `simple` bar can be rearranged with `layout`; see [UI](ui.md).
 
 The presets' buttons have ids — `menu_button`, `back_button`,
-`refresh_button`, `gallery_button`, `help_button` — so a script can hide one
+`refresh_button`, `help_button` — so a script can hide one
 without rebuilding the theme: `wlens.hide("refresh_button")`.
 
 How much the lightbox blurs what's behind it is up to the compositor

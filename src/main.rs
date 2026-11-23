@@ -36,6 +36,9 @@ struct Cli {
     /// Browse folders with openable subfolder and archive tiles in the gallery.
     #[arg(short, long)]
     browse: bool,
+    /// Open media from all subfolders as one list. Combine with --browse for a thumbnail grid.
+    #[arg(long)]
+    flat: bool,
     /// Theme to use: minimal, simple, lightbox, or one of yours in
     /// ~/.config/wlens/themes/. Overrides any wlens.use() in configs.
     #[arg(short, long, env = "WLENS_THEME")]
@@ -97,13 +100,6 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let (mut items, mut start) = files::gather(&files::Request {
-        inputs: &cli.files,
-        recursive: cli.recursive,
-        siblings: cli.siblings,
-        start: cli.start,
-    })?;
-
     let script = lua::Script::new().map_err(|e| anyhow::anyhow!("init lua: {e}"))?;
     script
         .set_args(
@@ -155,13 +151,71 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    if cli.browse
-        && matches!(cli.files.as_slice(), [p] if io::archive::is_archive(p) && p.is_file())
+    // Flat view determines which items to gather. Apply the other remembered
+    // options after the browser installs its theme defaults.
+    let mut options = io::state::section(&script.shared.borrow().script_id, "options");
+    if let Some(serde_json::Value::String(value)) = options.remove("gallery.flat")
+        && let Err(err) = script
+            .shared
+            .borrow_mut()
+            .settings
+            .set("gallery.flat", &value)
     {
-        script
-            .run_str("=browse", "wlens.gallery('open')")
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-    } else if cli.browse {
+        log::debug!("remembered option gallery.flat: {err}");
+    }
+
+    let single = match cli.files.as_slice() {
+        [p] => Some(p),
+        _ => None,
+    };
+    let archive = single.filter(|p| io::archive::is_archive(p) && p.is_file());
+    let directory = single
+        .filter(|p| p.is_dir())
+        .map(PathBuf::as_path)
+        .or_else(|| cli.files.is_empty().then_some(std::path::Path::new(".")));
+    let browse_dir = directory.is_some()
+        && !cli.flat
+        && (cli.browse || (single.is_some() && !cli.recursive && cli.start == 1));
+    let flat = {
+        let mut sh = script.shared.borrow_mut();
+        sh.settings.flat |= cli.flat
+            || (directory.is_some() && cli.recursive && !cli.browse)
+            || (archive.is_some() && cli.start > 1 && !cli.browse);
+        sh.settings.flat
+    };
+    let mut browser = directory.map(|dir| app::Browser {
+        location: app::BrowserLocation::Directory(dir.to_owned()),
+        flat,
+    });
+    let mut start_in_grid = cli.browse || browse_dir;
+    let (mut items, mut start) = if let Some(path) = archive {
+        let root = model::archive_folder::ArchiveFolder::opened(
+            path,
+            io::archive::list_entries(path, true)?,
+        );
+        let folders = root.items();
+        start_in_grid |= !cli.flat && cli.start == 1 && folders.iter().any(|item| item.container);
+        let items = if flat { root.flat_items() } else { folders };
+        let start = cli
+            .start
+            .saturating_sub(1)
+            .min(items.len().saturating_sub(1));
+        browser = Some(app::Browser {
+            location: app::BrowserLocation::Archive(root),
+            flat,
+        });
+        (items, start)
+    } else if browse_dir && !flat {
+        (Vec::new(), 0)
+    } else {
+        files::gather(&files::Request {
+            inputs: &cli.files,
+            recursive: cli.recursive || flat,
+            siblings: cli.siblings,
+            start: cli.start,
+        })?
+    };
+    if browse_dir && !flat {
         let dir = cli
             .files
             .first()
@@ -177,6 +231,13 @@ fn main() -> anyhow::Result<()> {
         browse
             .call::<()>(dir.to_string_lossy().as_ref())
             .map_err(|e| anyhow::anyhow!("browse: {e}"))?;
+    } else if start_in_grid || (browser.is_some() && items.is_empty()) {
+        script
+            .run_str(
+                "=browse",
+                "wlens.theme { gallery = { labels = true } }; wlens.gallery('open')",
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
     }
 
     // The config may supply items itself (wlens.set_items), or fetch them
@@ -188,14 +249,25 @@ fn main() -> anyhow::Result<()> {
             match op {
                 lua::ItemsOp::Add(list) => items.extend(list),
                 lua::ItemsOp::Set(list, idx) | lua::ItemsOp::Push(list, idx, _) => {
+                    browser = None;
                     items = list;
                     start = idx.unwrap_or(0);
+                }
+                lua::ItemsOp::Directory(dir) => {
+                    browser = Some(app::Browser {
+                        location: app::BrowserLocation::Directory(dir),
+                        flat: false,
+                    })
                 }
                 lua::ItemsOp::Pop => {}
                 lua::ItemsOp::More(m) => sh.more = m,
             }
         }
-        if items.is_empty() && sh.hooks.get("start").is_none_or(|h| h.is_empty()) {
+        if items.is_empty()
+            && browser.is_none()
+            && !browse_dir
+            && sh.hooks.get("start").is_none_or(|h| h.is_empty())
+        {
             bail!("no images to show");
         }
     }
@@ -203,8 +275,7 @@ fn main() -> anyhow::Result<()> {
     // Options you changed last time (menus, keys) win over the config's.
     {
         let mut sh = script.shared.borrow_mut();
-        let id = sh.script_id.clone();
-        for (k, v) in io::state::section(&id, "options") {
+        for (k, v) in options {
             if let Some(v) = v.as_str()
                 && let Err(e) = sh.settings.set(&k, v)
             {
@@ -224,6 +295,13 @@ fn main() -> anyhow::Result<()> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_with_display_handle_from_env(
         Box::new(event_loop.owned_display_handle()),
     ));
+    if let Some(browser) = &browser {
+        let path = match &browser.location {
+            app::BrowserLocation::Directory(dir) => Some(dir),
+            app::BrowserLocation::Archive(_) => archive,
+        };
+        script.shared.borrow_mut().level = path.map(|p| files::location_name(p));
+    }
     let mut app = app::App::new(
         items,
         start,
@@ -232,6 +310,7 @@ fn main() -> anyhow::Result<()> {
         event_loop.create_proxy(),
         instance,
     );
+    app.browser = browser;
     let socket = ipc.map(|s| s.serve(event_loop.create_proxy()));
     event_loop.run_app(&mut app)?;
     drop(socket); // remove the socket file before exiting

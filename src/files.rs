@@ -39,6 +39,20 @@ pub fn natural_cmp(left: &str, right: &str) -> Ordering {
     a.len().cmp(&b.len()).then_with(|| left.cmp(right))
 }
 
+pub fn location_name(path: &Path) -> String {
+    let resolved;
+    let path = if path.file_name().is_none() {
+        resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+        resolved.as_path()
+    } else {
+        path
+    };
+    path.file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// What the command line asked for.
 pub struct Request<'a> {
     pub inputs: &'a [PathBuf],
@@ -78,13 +92,19 @@ fn scan_dir(dir: &Path, recursive: bool, out: &mut Vec<PathBuf>) {
     });
     for p in entries {
         if p.is_dir() {
-            if recursive {
+            if recursive && !p.is_symlink() {
                 scan_dir(&p, true, out);
             }
         } else if is_image(&p) || is_video(&p) {
             out.push(p);
         }
     }
+}
+
+pub fn flat_directory(path: &Path) -> Vec<Item> {
+    let mut files = Vec::new();
+    scan_dir(path, true, &mut files);
+    paths_to_items(files)
 }
 
 fn paths_to_items(paths: Vec<PathBuf>) -> Vec<Item> {

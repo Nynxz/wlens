@@ -119,7 +119,7 @@ impl Reader {
         }
     }
 
-    pub fn header(&mut self) -> Result<Option<(String, bool, u64)>> {
+    pub fn header(&mut self) -> Result<Option<(String, libc::mode_t, u64)>> {
         // SAFETY: inspect only a successful, non-null header. Copy the name
         // before advancing; libarchive owns the entry and all accessor results.
         unsafe {
@@ -136,11 +136,14 @@ impl Reader {
             ensure!(!p.is_null(), "missing archive entry name");
             let name = CStr::from_ptr(p).to_bytes();
             ensure!(name.len() <= 4096, "archive entry name too long");
-            let regular = archive_entry_filetype(entry) == libc::S_IFREG
-                && archive_entry_hardlink(entry).is_null();
+            let kind = if archive_entry_hardlink(entry).is_null() {
+                archive_entry_filetype(entry)
+            } else {
+                0
+            };
             Ok(Some((
                 std::str::from_utf8(name)?.to_owned(),
-                regular,
+                kind,
                 archive_entry_size(entry).max(0) as u64,
             )))
         }

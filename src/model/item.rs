@@ -114,6 +114,7 @@ pub struct Item {
     /// A container (folder, album, gallery…): opening it runs `open`, which
     /// usually pushes a new item list. Containers are skipped in image view.
     pub container: bool,
+    pub archive_folder: Option<super::archive_folder::ArchiveFolder>,
     pub open: Option<crate::lua::Action>,
     /// Badge on a tile, e.g. how many images a container holds ("120+").
     pub count: Option<String>,
@@ -134,6 +135,7 @@ impl Item {
             label: None,
             thumb: None,
             container: false,
+            archive_folder: None,
             open: None,
             count: None,
             icon: None,

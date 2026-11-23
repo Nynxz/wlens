@@ -58,6 +58,61 @@ fn bar_layout() {
     );
 }
 
+#[test]
+fn back_button_keeps_its_slot_across_image_and_grid_views() {
+    let script = crate::lua::Script::new().unwrap();
+    let tree = script
+        .lua
+        .load("local w = wlens.widgets; return { w.bar { left = { w.menu_button(), w.navigation_button(), w.refresh_button() } } }")
+        .eval()
+        .unwrap();
+    let mut ui = Ui::parse(tree).unwrap();
+    let index = |id: &str| {
+        ui.nodes
+            .iter()
+            .position(|n| n.id.as_deref() == Some(id))
+            .unwrap()
+    };
+    let back = index("back_button");
+    let refresh = index("refresh_button");
+    let theme = Theme::default();
+    let mut next_button = None;
+    let mut back_rect = None;
+    for (mode, depth, available) in [
+        ("image", 1, true),
+        ("gallery", 1, true),
+        ("gallery", 0, false),
+        ("image", 0, true),
+    ] {
+        script.shared.borrow_mut().depth = depth;
+        let img = script.lua.create_table().unwrap();
+        img.set("mode", mode).unwrap();
+        img.set("count", 2).unwrap();
+        ui.refresh(&str::to_owned, &LuaValue::Table(img));
+        ui.animate(0.016, &theme, None, false);
+        ui.layout(Rect::new(0.0, 0.0, 360.0, 200.0), 1.0, &theme, &mut Fixed);
+        ui.draw(
+            1.0,
+            &theme,
+            &mut Vec::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+            &mut |_| None,
+        );
+        let rect = ui.nodes[refresh].rect;
+        assert_eq!(rect, *next_button.get_or_insert(rect));
+        if available {
+            let rect = ui.nodes[back].rect;
+            assert!(rect.w > 0.0 && rect.h > 0.0);
+            assert_eq!(rect, *back_rect.get_or_insert(rect));
+        }
+        assert_eq!(
+            ui.hit(back_rect.unwrap().center()).clickable,
+            available.then_some(back)
+        );
+    }
+}
+
 fn build(src: &str) -> Ui {
     let lua = mlua::Lua::new();
     let mut ui = Ui::parse(lua.load(src).eval().unwrap()).unwrap();
