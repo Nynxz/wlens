@@ -117,12 +117,6 @@ impl App {
                 self.sync_visibility();
             }
             Command::Copy(what) => self.copy(&what),
-            Command::Gallery(action, _) if action == "flat" => {
-                return self.exec(
-                    event_loop,
-                    Command::Set("gallery.flat".into(), "toggle".into()),
-                );
-            }
             Command::Gallery(action, rows) if action == "scroll" => {
                 let grid = self.grid();
                 self.scroll_gallery(

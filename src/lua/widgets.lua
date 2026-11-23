@@ -404,7 +404,8 @@ function W.filename(o)
     text = "{name}", color = W.style.fg, padding = { 3, 8 }, radius = W.style.button_radius,
     max_width = 360, -- long names shorten in the middle, keeping the extension
     -- Describes what's open: hidden while a folder/gallery tile is merely selected.
-    show = function(img) return img ~= nil and not img.container end,
+    show = W.viewing,
+    anim = 0,
     on_click = "copy path", tooltip = "{name} — click to copy the path",
     hover = { background = W.style.hover, color = W.style.fg },
   }, o or {})
@@ -813,10 +814,14 @@ function W.button(icon, action, tip, o)
 end
 
 -- Back steps from an image to its grid, then from that grid to its parent.
+local function can_go_back(img)
+  return wlens.depth() > 0 or (W.viewing(img) and img.count > 0)
+end
+
 function W.back_button(o)
   return W.button(W.icons.back, "back", "Back", E({
     id = "back_button",
-    show = function(img) return wlens.depth() > 0 or (img ~= nil and img.mode ~= "gallery" and img.count > 0) end,
+    show = can_go_back,
   }, o or {}))
 end
 
@@ -849,12 +854,14 @@ function W.gallery_button(o)
   }, o or {}))
 end
 
--- Reserve the Back button’s space even in the root grid.
+-- Keep the arrow in place at the root, dimmed and without a click target.
 function W.navigation_button(o)
   local size = (o and o.font_size) or W.style.icon_size
   local button = E({ anchor = "center", width = "100%", height = "100%", anim = 0 }, o or {})
   return {
-    { width = size + 14, height = size + 6 },
+    { width = size + 14, height = size + 6, font = button.font or W.style.icon_font, font_size = size,
+      color = W.style.dim, text_align = "center",
+      text = function(img) if not can_go_back(img) then return W.icons.back end end },
     W.back_button(button),
   }
 end
@@ -948,7 +955,7 @@ W.default_menu = {
   { "Actual size", "zoom actual" },
   { "Fullscreen", "fullscreen" },
   "-",
-  { "Toggle flat view", "gallery flat" },
+  { "Toggle flat view", "set gallery.flat toggle", show = wlens.has_subfolders },
   { "Back", "back" },
   { "Refresh", "refresh" },
   { "Slideshow", function() W.slideshow() end },
@@ -987,6 +994,7 @@ function W.menu(o)
         hover = { background = W.style.hover },
         -- Like native menus: arrow cursor, near-instant highlight.
         cursor = o.cursor or "default",
+        show = it.show,
         anim = o.anim or 0.06,
         on_click = function()
           wlens.hide(id)
@@ -1087,6 +1095,8 @@ W.extra_settings_tabs = {}
 function W.add_settings_tab(title, rows) table.insert(W.extra_settings_tabs, { title, rows }) end
 
 function W.default_settings_tabs()
+  local flat = W.setting("Flat view", W.toggle("gallery.flat"), "Include media from subfolders")
+  flat.show = wlens.has_subfolders
   local tabs = {
   { "View", {
     W.setting("Fit", W.choice("fit", { { "Shrink", "shrink" }, { "Contain", "contain" }, { "Cover", "cover" }, { "Width", "width" } }),
@@ -1099,7 +1109,7 @@ function W.default_settings_tabs()
   } },
   { "Gallery", {
     W.setting("Thumbnails", W.choice("gallery.fit", { { "Crop", "cover" }, { "Fit", "contain" } })),
-    W.setting("Flat view", W.toggle("gallery.flat"), "Include media from subfolders"),
+    flat,
     W.setting("Names", W.toggle("gallery.labels"), "Under each thumbnail"),
     W.setting("Size", W.range("gallery.size", 96, 400, { step = 8 })),
   } },

@@ -33,7 +33,7 @@ wlens.set_items {
   the back button) returns with the previous selection and scroll restored.
 - `Esc` climbs out one step at a time: image → its grid → parent level → quit.
 - In image view, next/prev skip containers; choosing one opens it.
-- `wlens.depth()` gives the depth. `wlens.level()` gives the browsing location’s title even in an empty grid.
+- `wlens.depth()` gives the depth. `wlens.level()` gives the browsing location’s title even in an empty grid. `wlens.has_subfolders()` reports whether the current directory or archive folder contains browsable subfolders, including in flat view.
 - `pop_items()` leaves a level in order with other list changes made in the
   same callback (useful for rebuilding both levels on refresh).
 
@@ -43,8 +43,8 @@ wlens.set_items {
 then images and supported videos. Return opens the selected tile. Alt+Left
 and Alt+Right, or the mouse's back and forward buttons, revisit a folder with
 its selection and scroll position. Right-click leaves an image for its thumbnails;
-right-click again to return to the parent folder. Press `v` to include
-subfolders in a single grid, and press it again to restore the folder view. Opening a different folder starts a new
+right-click again to return to the parent folder. Press `v` to browse all media
+from the opened archive or directory in a single root grid, and press it again to restore the folder view. Opening a different folder starts a new
 forward history.
 
 Open an archive tile or run `wlens photos.zip` to navigate its folders one

@@ -183,10 +183,8 @@ fn main() -> anyhow::Result<()> {
             || (archive.is_some() && cli.start > 1 && !cli.browse);
         sh.settings.flat
     };
-    let mut browser = directory.map(|dir| app::Browser {
-        location: app::BrowserLocation::Directory(dir.to_owned()),
-        flat,
-    });
+    let mut browser = directory
+        .map(|dir| app::Browser::new(app::BrowserLocation::Directory(dir.to_owned()), flat));
     let mut start_in_grid = cli.browse || browse_dir;
     let (mut items, mut start) = if let Some(path) = archive {
         let root = model::archive_folder::ArchiveFolder::opened(
@@ -200,10 +198,7 @@ fn main() -> anyhow::Result<()> {
             .start
             .saturating_sub(1)
             .min(items.len().saturating_sub(1));
-        browser = Some(app::Browser {
-            location: app::BrowserLocation::Archive(root),
-            flat,
-        });
+        browser = Some(app::Browser::new(app::BrowserLocation::Archive(root), flat));
         (items, start)
     } else if browse_dir && !flat {
         (Vec::new(), 0)
@@ -254,10 +249,10 @@ fn main() -> anyhow::Result<()> {
                     start = idx.unwrap_or(0);
                 }
                 lua::ItemsOp::Directory(dir) => {
-                    browser = Some(app::Browser {
-                        location: app::BrowserLocation::Directory(dir),
-                        flat: false,
-                    })
+                    browser = Some(app::Browser::new(
+                        app::BrowserLocation::Directory(dir),
+                        false,
+                    ))
                 }
                 lua::ItemsOp::Pop => {}
                 lua::ItemsOp::More(m) => sh.more = m,

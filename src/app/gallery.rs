@@ -53,6 +53,7 @@ impl App {
         self.gallery.resize_anchor = None;
         self.gallery.active = on;
         if on {
+            self.update_browser_view();
             self.ensure_selection_visible();
             if self.gallery.t < 0.01 {
                 // Opening fresh: jump straight to the selection.

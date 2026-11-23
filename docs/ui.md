@@ -232,7 +232,7 @@ table, so `wlens.extend(widget, { ... })` restyles it.
 | `setting(label, control, hint)`, `toggle(key, {on, off})`, `choice(key, { {label, value}… })`, `range(key, min, max, {step})` | Settings rows and controls bound to an option: they show its current value and run `set key value` (applied at once, remembered next run) |
 | `label(text, opts)` | Any text |
 | `button(icon_or_text, action, tooltip, opts)` | Tooltip includes the bound key. Also takes one table: `w.button{ icon = …, action = …, tooltip = …, color = … }` (likewise `rail_button{ icon, … }` and `action{ label, … }`) |
-| `navigation_button()` | Back returns to the thumbnail grid, then goes up one folder. The toolbar reserves its space at the root. |
+| `navigation_button()` | Back returns to the thumbnail grid, then goes up one folder. The arrow stays visible and is disabled at the root. |
 | `menu_button()`, `back_button()`, `refresh_button()`, `gallery_button()`, `help_button()` | Individual buttons for custom layouts (each has that id) |
 | `rail_button(icon, action, tooltip)` | A button for a collapsed sidebar's rail |
 | `icon(glyph_or_url, size, color)` | An icon: a glyph, or a picture from a path or URL |

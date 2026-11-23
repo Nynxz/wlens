@@ -140,6 +140,12 @@ impl Script {
             })?,
         )?;
 
+        let sh = shared.clone();
+        w.set(
+            "has_subfolders",
+            lua.create_function(move |_, ()| Ok(sh.borrow().has_subfolders))?,
+        )?;
+
         // wlens.visible(id) -> bool | nil
         let sh = shared.clone();
         w.set(
