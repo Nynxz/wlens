@@ -6,7 +6,13 @@ impl App {
     /// Show the current item if decoded, and (re)queue preloads around it.
     /// In gallery mode only thumbnails load; the full image waits for `open`.
     pub(super) fn sync(&mut self) {
+        if self.listing_archive.is_some()
+            && self.current_src().and_then(Source::local_path) != self.listing_archive.as_deref()
+        {
+            self.listing_archive = None;
+        }
         let Some(src) = self.current_src().cloned() else {
+            self.update_info();
             return;
         };
         if !self.gallery.active && self.items.get(self.index).is_some_and(|i| i.container) {
@@ -164,6 +170,7 @@ impl App {
             let (position, duration, paused) = vinfo.unwrap_or((0.0, 0.0, false));
             let path = item.src.as_string();
             let dir = match &item.src {
+                Source::Archive { archive, .. } => archive.to_string_lossy().into_owned(),
                 Source::Path(p) => p
                     .parent()
                     .map(|d| d.to_string_lossy().into_owned())
@@ -193,7 +200,7 @@ impl App {
                 meta: item.meta.clone(),
                 loading,
                 depth: self.stack.len(),
-                level: self.level_title.clone(),
+                level: self.script.shared.borrow().level.clone(),
                 video,
                 position,
                 duration,
@@ -208,6 +215,7 @@ impl App {
         let mut sh = self.script.shared.borrow_mut();
         sh.info = info;
         sh.depth = self.stack.len();
+        sh.has_subfolders = self.browser.as_ref().is_some_and(|b| b.has_subfolders);
         drop(sh);
         self.text_dirty = true;
     }

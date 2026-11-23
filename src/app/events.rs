@@ -2,6 +2,17 @@
 
 use super::*;
 
+/// The binding supplies direction and sensitivity. Wheel units are rows,
+/// precision input is already in physical pixels.
+fn gallery_scroll_input(delta: MouseScrollDelta, rows: f64, row_height: f64) -> ScrollInput {
+    match delta {
+        MouseScrollDelta::LineDelta(_, lines) => {
+            ScrollInput::Wheel(-rows * f64::from(lines.abs()) * row_height)
+        }
+        MouseScrollDelta::PixelDelta(p) => ScrollInput::Pixels(-rows * p.y.abs()),
+    }
+}
+
 impl ApplicationHandler<UserEvent> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -49,6 +60,7 @@ impl ApplicationHandler<UserEvent> for App {
         self.window = Some(window);
 
         self.layout_ui();
+        self.update_browser_view();
         self.sync();
         self.script.emit("start");
         self.drain_queue(event_loop);
@@ -94,8 +106,23 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
+            UserEvent::ArchiveListed { path, result } => {
+                if self.listing_archive.as_ref() == Some(&path) {
+                    self.listing_archive = None;
+                    match result {
+                        Ok(pages) => {
+                            let title = self.items.get(self.index).map(Item::name);
+                            self.open_archive_folder(
+                                crate::model::archive_folder::ArchiveFolder::opened(&path, pages),
+                                title,
+                            );
+                        }
+                        Err(e) => self.toast(&e),
+                    }
+                }
+            }
             UserEvent::Loaded { src, result } => self.on_loaded(src, result),
-            UserEvent::Thumb { src, result } => self.on_thumb(src, result),
+            UserEvent::Thumb { src, level, result } => self.on_thumb(src, level, result),
             #[cfg(feature = "video")]
             UserEvent::VideoCached { src, path } => self.on_video_cached(src, path),
             #[cfg(feature = "video")]
@@ -151,8 +178,18 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 self.redraw();
             }
+            WindowEvent::Focused(false) => {
+                self.press = None;
+                self.update_cursor();
+            }
             WindowEvent::RedrawRequested => self.render(),
-            WindowEvent::ModifiersChanged(m) => self.mods = m.state(),
+            WindowEvent::ModifiersChanged(m) => {
+                if self.mods != m.state() {
+                    self.scroll_accum = 0.0;
+                    self.gallery.resize_anchor = None;
+                }
+                self.mods = m.state();
+            }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 if self.focus.is_some() && self.input_key(event_loop, &event) {
                     return;
@@ -165,18 +202,51 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::MouseWheel { delta, .. } => {
                 // A scrollable UI area under the cursor (e.g. a long sidebar) takes it.
                 if let Some(c) = self.cursor {
-                    let px = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => y as f64 * 48.0 * self.scale as f64,
-                        MouseScrollDelta::PixelDelta(p) => p.y,
+                    let input = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => {
+                            ui::ScrollInput::Wheel(y as f64 * 48.0 * self.scale as f64)
+                        }
+                        MouseScrollDelta::PixelDelta(p) => ui::ScrollInput::Pixels(p.y),
                     };
-                    if self.ui.scroll_at((c.x, c.y), px) {
+                    if self.ui.scroll_at((c.x, c.y), input) {
                         self.redraw();
                         return;
                     }
                 }
-                // Touchpads send many small pixel deltas; turn them into
-                // discrete steps so `ScrollUp` binds behave like a wheel.
+                // Continuous gallery bindings consume fractional input. Other
+                // bindings (e.g. next image) still fire in discrete steps.
                 const PX_PER_STEP: f64 = 40.0;
+                let steps = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y as f64,
+                    MouseScrollDelta::PixelDelta(p) => p.y / (PX_PER_STEP * self.scale as f64),
+                };
+                if self.gallery.active && steps != 0.0 {
+                    let name = if steps > 0.0 {
+                        "scrollup"
+                    } else {
+                        "scrolldown"
+                    };
+                    let chord = Chord::named(name, self.mods);
+                    if let Some(Action::Command(Command::Gallery(action, factor))) =
+                        self.script.binding(&chord, self.mode())
+                    {
+                        if action == "scroll" {
+                            let grid = self.grid();
+                            let input =
+                                gallery_scroll_input(delta, factor.unwrap_or(1.0), grid.row_h());
+                            self.scroll_gallery(grid, input);
+                            return;
+                        }
+                        if matches!(action.as_str(), "bigger" | "smaller") {
+                            let step = factor.unwrap_or(1.15).powf(steps.abs());
+                            self.zoom_anchor = self.cursor.map(|c| (c.x, c.y));
+                            self.exec(event_loop, Command::Gallery(action, Some(step)));
+                            self.zoom_anchor = None;
+                            return;
+                        }
+                    }
+                }
+                self.gallery.resize_anchor = None;
                 let dy = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y as f64,
                     MouseScrollDelta::PixelDelta(p) => {
@@ -194,7 +264,12 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                if let Some(i) = self.press.as_ref().and_then(|p| p.slider) {
+                if let Some(i) = self
+                    .press
+                    .as_ref()
+                    .filter(|p| p.slider)
+                    .and_then(|p| p.target)
+                {
                     self.press.as_mut().unwrap().dragged = true;
                     self.slide(event_loop, i, position.x);
                 } else if let Some(press) = &mut self.press {
@@ -213,6 +288,8 @@ impl ApplicationHandler<UserEvent> for App {
                             let max = g.max_scroll(self.grid_len(&g));
                             self.gallery.scroll = (self.gallery.scroll - dy).clamp(0.0, max);
                             self.gallery.shown = self.gallery.scroll;
+                        } else if press.button == MouseButton::Middle {
+                            self.pan_to_pointer(position);
                         } else {
                             self.sync_pan_mode();
                             let (img, vp) = (self.img_size(), self.viewport);
@@ -228,20 +305,7 @@ impl ApplicationHandler<UserEvent> for App {
                 self.cursor = Some(position);
                 self.last_motion = Instant::now();
                 let p = (position.x, position.y);
-                let ui_hit = self.ui.hit(p);
-                let thumb = if self.gallery.active && !ui_hit.over_ui {
-                    self.grid()
-                        .index_at(p, self.gallery.shown, self.items.len())
-                } else {
-                    None
-                };
-                if let Some(w) = &self.window {
-                    w.set_cursor(if ui_hit.pointer || thumb.is_some() {
-                        CursorIcon::Pointer
-                    } else {
-                        CursorIcon::Default
-                    });
-                }
+                let thumb = self.update_cursor();
                 // Mouse motion alone changes nothing on screen unless it
                 // drags, moves between hover targets, or reveals controls.
                 let hover = (self.ui.hover_key(p), thumb);
@@ -259,34 +323,56 @@ impl ApplicationHandler<UserEvent> for App {
                 self.redraw();
             }
             WindowEvent::MouseInput { state, button, .. } => match (button, state) {
-                (MouseButton::Left, ElementState::Pressed) => {
-                    if let Some(at) = self.cursor {
+                (MouseButton::Left | MouseButton::Middle, ElementState::Pressed) => {
+                    if self.press.is_none()
+                        && let Some(at) = self.cursor
+                    {
                         let hit = self.ui.hit((at.x, at.y));
-                        let slider = hit.clickable.filter(|&i| self.ui.nodes[i].slider.is_some());
+                        let slider = hit.clickable.filter(|&i| {
+                            button == MouseButton::Left && self.ui.nodes[i].slider.is_some()
+                        });
+                        // A custom click binding gets a chance to run without moving the view.
+                        let seek_on_press = button == MouseButton::Middle
+                            && !hit.blocks_drag
+                            && !self.gallery.active
+                            && self
+                                .script
+                                .binding(&Chord::named("middleclick", self.mods), self.mode())
+                                .is_none();
                         self.press = Some(Press {
+                            button,
+                            mods: self.mods,
                             at,
-                            dragged: false,
-                            slider,
+                            dragged: seek_on_press,
+                            target: hit.clickable,
+                            slider: slider.is_some(),
                             blocks_drag: hit.blocks_drag,
                         });
                         if let Some(i) = slider {
                             self.slide(event_loop, i, at.x);
+                        } else if seek_on_press {
+                            self.pan_to_pointer(at);
+                            self.update_cursor();
                         }
                     }
                 }
-                (MouseButton::Left, ElementState::Released) => {
-                    if let Some(p) = self.press.take()
+                (MouseButton::Left | MouseButton::Middle, ElementState::Released) => {
+                    if let Some(p) = self.press.take_if(|p| p.button == button)
                         && !p.dragged
-                        && p.slider.is_none()
+                        && !p.slider
+                        && let Some(at) = self.cursor
+                        && self.ui.hit((at.x, at.y)).clickable == p.target
                     {
-                        self.click(event_loop, p.at);
+                        if button == MouseButton::Middle {
+                            self.trigger(event_loop, &Chord::named("middleclick", p.mods));
+                        } else {
+                            self.click(event_loop, at);
+                        }
                     }
+                    self.update_cursor();
                 }
                 (MouseButton::Right, ElementState::Pressed) => {
                     self.trigger(event_loop, &Chord::named("rightclick", self.mods));
-                }
-                (MouseButton::Middle, ElementState::Pressed) => {
-                    self.trigger(event_loop, &Chord::named("middleclick", self.mods));
                 }
                 // The side buttons (browser-style back / forward).
                 (MouseButton::Back, ElementState::Pressed) => {
@@ -299,5 +385,27 @@ impl ApplicationHandler<UserEvent> for App {
             },
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn precision_scroll_follows_the_displayed_grid() {
+        let (mut shown, mut target) = (20.0, 20.0);
+        let mut apply = |delta, rows| {
+            gallery_scroll_input(delta, rows, 180.0).apply(&mut shown, &mut target, 500.0);
+            (shown, target)
+        };
+        assert_eq!(
+            apply(MouseScrollDelta::LineDelta(0.0, -1.5), 1.0),
+            (20.0, 290.0)
+        );
+        let pixel = |dy| MouseScrollDelta::PixelDelta(winit::dpi::PhysicalPosition::new(0.0, dy));
+        assert_eq!(apply(pixel(-0.25), 1.0), (20.25, 20.25));
+        assert_eq!(apply(pixel(2.0), -2.0), (16.25, 16.25));
+        assert_eq!(apply(pixel(100.0), -1.0), (0.0, 0.0));
     }
 }

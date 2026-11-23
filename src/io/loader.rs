@@ -6,7 +6,7 @@
 //! navigation/scroll, so stale jobs that haven't started yet are dropped.
 
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 
 use image::{DynamicImage, ImageDecoder, ImageReader};
@@ -46,6 +46,7 @@ pub type ThumbResult = Result<Arc<Thumb>, String>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Job {
+    ListArchive(PathBuf),
     /// Full-resolution image for the viewer.
     Image(Source),
     /// Thumbnail at a freedesktop size bucket for an item, optionally made
@@ -139,6 +140,11 @@ fn worker(shared: &(Mutex<Queue>, Condvar), proxy: &EventLoopProxy<UserEvent>, m
         };
         let t = std::time::Instant::now();
         let event = match job {
+            Job::ListArchive(path) => {
+                let result = guarded(|| crate::io::archive::list_entries(&path, true))
+                    .map_err(|e| format!("{e:#}"));
+                UserEvent::ArchiveListed { path, result }
+            }
             Job::Image(src) => {
                 let result = guarded(|| decode_source(&src, max_dim))
                     .map(Arc::new)
@@ -146,12 +152,12 @@ fn worker(shared: &(Mutex<Queue>, Condvar), proxy: &EventLoopProxy<UserEvent>, m
                 log::debug!("decoded {} in {:?}", src.as_string(), t.elapsed());
                 UserEvent::Loaded { src, result }
             }
-            Job::Thumb(src, from, size) => {
-                let result = guarded(|| crate::io::thumbs::load(&src, from.as_ref(), size))
+            Job::Thumb(src, from, level) => {
+                let result = guarded(|| crate::io::thumbs::load(&src, from.as_ref(), level))
                     .map(Arc::new)
                     .map_err(|e| format!("{e:#}"));
                 log::trace!("thumb {} in {:?}", src.as_string(), t.elapsed());
-                UserEvent::Thumb { src, result }
+                UserEvent::Thumb { src, level, result }
             }
             Job::Fetch(id, req) => UserEvent::Fetched {
                 id,
@@ -190,11 +196,29 @@ pub fn decode_image(path: &Path) -> anyhow::Result<DynamicImage> {
     Ok(img)
 }
 
+pub(super) fn resolve(src: &Source) -> anyhow::Result<PathBuf> {
+    match src {
+        Source::Path(p) => Ok(p.clone()),
+        Source::Url(u) => crate::io::remote::fetch_to_cache(u),
+        Source::Archive { archive, entry } => {
+            let page = crate::io::archive::materialize(archive, entry)?;
+            // Archive byte limits do not bound the decoded image or animation canvas.
+            let decoder = ImageReader::open(&page)?
+                .with_guessed_format()?
+                .into_decoder()?;
+            let (w, h) = decoder.dimensions();
+            let pixels = u64::from(w) * u64::from(h);
+            anyhow::ensure!(
+                pixels <= (64 << 20) && decoder.total_bytes() <= (256 << 20),
+                "archive image exceeds decoded size limit"
+            );
+            Ok(page)
+        }
+    }
+}
+
 fn decode_source(src: &Source, max_dim: u32) -> anyhow::Result<Decoded> {
-    let path = match src {
-        Source::Path(p) => p.clone(),
-        Source::Url(u) => crate::io::remote::fetch_to_cache(u)?,
-    };
+    let path = resolve(src)?;
     let result = decode(&path, max_dim);
     if result.is_err() && src.is_remote() {
         // A successful HTTP response can still contain broken media.

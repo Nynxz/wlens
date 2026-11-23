@@ -76,7 +76,11 @@ keys match the character typed, so `N` already means Shift+n.
 
 **Mouse names:** `ScrollUp`, `ScrollDown`, `ClickImage`, `ClickBackdrop`,
 `DoubleClick`, `RightClick`, `MiddleClick`, `MouseBack`, `MouseForward` (the
-side buttons; `MouseBack` goes back by default). Drag with the left button pans.
+side buttons; `MouseBack` goes back by default). Left drag moves the image.
+Holding the middle button pans a zoomed image to the pointer's position in
+the viewport. Where the image fits, pressing the middle button places its center
+at the pointer, within the limits of the `pan` setting. With a custom `MiddleClick` binding, a click runs the binding
+on release and a drag starts panning once the pointer moves past the click threshold.
 
 **Modes:** a binding with a 4th argument (`"image"`, `"video"` or
 `"gallery"`) only applies in that mode and wins over the global one. Video

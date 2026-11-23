@@ -36,7 +36,10 @@ impl Script {
                         }
                         LuaValue::Function(f) => (Action::Lua(f), None),
                         LuaValue::Nil => {
-                            sh.borrow_mut().bindings.remove(&slot);
+                            let mut sh = sh.borrow_mut();
+                            if sh.bindings.remove(&slot).is_some() {
+                                sh.binding_revision += 1;
+                            }
                             return Ok(());
                         }
                         other => {
@@ -47,8 +50,8 @@ impl Script {
                         }
                     };
                     let mut sh = sh.borrow_mut();
-                    sh.next_order += 1;
-                    let order = sh.next_order;
+                    sh.binding_revision += 1;
+                    let order = sh.binding_revision;
                     let desc = desc
                         .or_else(|| command.clone())
                         .unwrap_or_else(|| "(lua)".into());
@@ -65,6 +68,12 @@ impl Script {
                     Ok(())
                 },
             )?,
+        )?;
+
+        let sh = shared.clone();
+        w.set(
+            "_bindings_revision",
+            lua.create_function(move |_, ()| Ok(sh.borrow().binding_revision))?,
         )?;
 
         // wlens.bindings() -> { {key = "n", desc = "next"}, ... } in definition order
@@ -140,6 +149,12 @@ impl Script {
             })?,
         )?;
 
+        let sh = shared.clone();
+        w.set(
+            "has_subfolders",
+            lua.create_function(move |_, ()| Ok(sh.borrow().has_subfolders))?,
+        )?;
+
         // wlens.visible(id) -> bool | nil
         let sh = shared.clone();
         w.set(
@@ -174,17 +189,23 @@ impl Script {
             let sh = shared.clone();
             w.set(
                 name,
-                lua.create_function(move |_, (list, start): (Table, Option<usize>)| {
-                    let items = parse_items(&list)?;
-                    let start = start.map(|i| i.saturating_sub(1));
-                    let op = if append {
-                        ItemsOp::Add(items)
-                    } else {
-                        ItemsOp::Set(items, start)
-                    };
-                    sh.borrow_mut().pending_items.push(op);
-                    Ok(())
-                })?,
+                lua.create_function(
+                    move |_, (list, start, directory): (Table, Option<usize>, Option<String>)| {
+                        let items = parse_items(&list)?;
+                        let start = start.map(|i| i.saturating_sub(1));
+                        let op = if append {
+                            ItemsOp::Add(items)
+                        } else {
+                            ItemsOp::Set(items, start)
+                        };
+                        let mut sh = sh.borrow_mut();
+                        sh.pending_items.push(op);
+                        if !append && let Some(dir) = directory {
+                            sh.pending_items.push(ItemsOp::Directory(dir.into()));
+                        }
+                        Ok(())
+                    },
+                )?,
             )?;
         }
 
@@ -195,6 +216,11 @@ impl Script {
             lua.create_function(move |_, (list, opts): (Table, Option<Table>)| {
                 let items = parse_items(&list)?;
                 let (mut start, mut title) = (None, None);
+                let directory = opts
+                    .as_ref()
+                    .map(|o| o.get::<Option<String>>("directory"))
+                    .transpose()?
+                    .flatten();
                 if let Some(o) = opts {
                     start = o
                         .get::<Option<usize>>("index")?
@@ -203,6 +229,9 @@ impl Script {
                 }
                 let mut s = sh.borrow_mut();
                 s.pending_items.push(ItemsOp::Push(items, start, title));
+                if let Some(dir) = directory {
+                    s.pending_items.push(ItemsOp::Directory(dir.into()));
+                }
                 // wlens.depth() counts it straight away (it's applied later).
                 s.depth += 1;
                 Ok(())
@@ -253,6 +282,12 @@ impl Script {
             lua.create_function(move |_, ()| Ok(sh.borrow().depth))?,
         )?;
 
+        let sh = shared.clone();
+        w.set(
+            "level",
+            lua.create_function(move |_, ()| Ok(sh.borrow().level.clone()))?,
+        )?;
+
         // wlens.list_dir(path) -> { {name, path, dir = bool, image = bool}, ... } sorted by name
         w.set(
             "list_dir",
@@ -262,7 +297,12 @@ impl Script {
                     .flatten()
                     .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
                     .collect();
-                entries.sort_by_key(|e| e.file_name().to_string_lossy().to_lowercase());
+                entries.sort_by(|a, b| {
+                    crate::files::natural_cmp(
+                        &a.file_name().to_string_lossy(),
+                        &b.file_name().to_string_lossy(),
+                    )
+                });
                 let out = lua.create_table()?;
                 for e in entries {
                     let p = e.path();
@@ -272,6 +312,7 @@ impl Script {
                     t.set("dir", p.is_dir())?;
                     t.set("image", crate::files::is_image(&p))?;
                     t.set("video", crate::files::is_video(&p))?;
+                    t.set("archive", crate::io::archive::is_archive(&p) && p.is_file())?;
                     out.push(t)?;
                 }
                 Ok(out)
@@ -462,7 +503,9 @@ impl Script {
         w.set(
             "unbind_all",
             lua.create_function(move |_, ()| {
-                sh.borrow_mut().bindings.clear();
+                let mut sh = sh.borrow_mut();
+                sh.bindings.clear();
+                sh.binding_revision += 1;
                 Ok(())
             })?,
         )?;

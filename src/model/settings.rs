@@ -96,6 +96,7 @@ pub struct Settings {
     pub slideshow_interval: f64,
     /// Wrap around at the ends of the file list.
     pub wrap: bool,
+    pub flat: bool,
     /// How many images to decode ahead/behind the current one.
     pub preload: usize,
     /// Decoded-image cache budget in MiB.
@@ -119,6 +120,7 @@ impl Default for Settings {
             zoom_step: 1.25,
             slideshow_interval: 4.0,
             wrap: false,
+            flat: false,
             preload: 2,
             cache_mb: 512,
             remote_cache_mb: 2048,
@@ -137,6 +139,7 @@ pub const KEYS: &[&str] = &[
     "zoom_step",
     "slideshow_interval",
     "wrap",
+    "gallery.flat",
     "preload",
     "cache_mb",
     "remote_cache_mb",
@@ -181,6 +184,7 @@ impl Settings {
                 }
                 self.slideshow_interval = seconds;
             }
+            "gallery.flat" => self.flat = parse_bool(v, self.flat)?,
             "wrap" => self.wrap = parse_bool(v, self.wrap)?,
             "preload" => self.preload = parse_num(v)?,
             "cache_mb" => self.cache_mb = parse_num(v)?,
@@ -212,6 +216,7 @@ impl Settings {
             }),
             "zoom_step" => Num(self.zoom_step),
             "slideshow_interval" => Num(self.slideshow_interval),
+            "gallery.flat" => Bool(self.flat),
             "wrap" => Bool(self.wrap),
             "preload" => Num(self.preload as f64),
             "cache_mb" => Num(self.cache_mb as f64),

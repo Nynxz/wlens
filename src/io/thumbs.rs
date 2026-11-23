@@ -54,15 +54,24 @@ fn mtime(p: &Path) -> Option<u64> {
 
 /// Load a cached thumbnail if it's still valid, else generate (and cache) one.
 /// `from` is where to get pixels when it differs from the item itself (a
-/// media server's own thumbnail URL); the cache is still keyed by `src`.
+/// media server's own thumbnail URL); its URI is used as the cache key.
 pub fn load(src: &Source, from: Option<&Source>, size: u32) -> anyhow::Result<Thumb> {
     // Key the cache on the file we actually thumbnail: for a container's
     // cover or a server thumbnail that's `from`, which keeps every entry a
     // genuine image thumbnail in the shared freedesktop cache.
     let key = from.unwrap_or(src);
-    let uri = key.uri();
+    let uri = match key {
+        Source::Archive { archive, .. } => {
+            let revision = crate::io::archive::revision(&std::fs::metadata(archive)?);
+            format!("{}&revision={revision}", key.uri())
+        }
+        _ => key.uri(),
+    };
     let file = thumb_file(&uri, size);
-    let src_mtime = key.local_path().and_then(mtime);
+    let src_mtime = match key {
+        Source::Archive { archive, .. } => mtime(archive),
+        _ => key.local_path().and_then(mtime),
+    };
 
     if let Some(f) = &file
         && let Some(t) = read_cached(f, &uri, src_mtime)
@@ -70,10 +79,7 @@ pub fn load(src: &Source, from: Option<&Source>, size: u32) -> anyhow::Result<Th
         return Ok(t);
     }
 
-    let local = match from.unwrap_or(src) {
-        Source::Path(p) => p.clone(),
-        Source::Url(u) => crate::io::remote::fetch_to_cache(u)?,
-    };
+    let local = crate::io::loader::resolve(key)?;
     #[cfg(feature = "video")]
     let img = if crate::files::is_video(&local) {
         crate::io::video::thumbnail(&local)?

@@ -31,6 +31,7 @@ bind("2", "zoom 200%")
 bind("3", "zoom 300%")
 
 -- fit modes
+bind("F", "fit", "Reapply current fit mode")
 bind("W", "fit contain")
 bind("w", "fit shrink")
 bind("e", "fit width")
@@ -62,7 +63,6 @@ bind("b", function()
   wlens.toggle(wlens.visible("panels") ~= nil and "panels" or "bar")
 end, "Hide bars and sidebars")
 bind("f", "fullscreen")
-bind("F", "fullscreen")
 bind("R", "reload", "Reload the image from disk")
 bind("F5", "refresh", "Refresh")
 bind("P", "animation toggle", "Play / pause animation")
@@ -82,7 +82,8 @@ bind("m", "ui toggle menu", "Menu")
 bind("s", function() wlens.widgets.slideshow() end, "Slideshow on/off")
 
 -- mouse pseudo-keys: ScrollUp/Down, ClickImage, ClickBackdrop, DoubleClick,
--- RightClick, MiddleClick, MouseBack, MouseForward (drag with the left button pans)
+-- RightClick, MiddleClick, MouseBack, MouseForward. Left drag moves the image;
+-- holding the middle button pans to the pointer's position in the viewport.
 -- Double-click: fitted -> 100% at the click point (200% if it already is
 -- 100%), zoomed -> back to fit.
 -- Video (mpv-style). Mode "video" falls back to image bindings, so n/p,
@@ -101,8 +102,8 @@ vbind("M", "video mute", "Mute")
 vbind("ClickImage", "video toggle", "Play / pause")
 for i = 0, 9 do vbind(tostring(i), "video seek " .. (i * 10) .. "%", nil) end
 
--- Right-click goes backwards: the previous image, or up a level in the grid.
-bind("RightClick", "prev", "Previous image")
+-- Right-click leaves the image for its thumbnails, then goes up a folder.
+bind("RightClick", "back", "Back to thumbnails")
 bind(",", "ui toggle settings", "Settings")
 bind("DoubleClick", function()
   local img = wlens.current()
@@ -130,9 +131,12 @@ gbind("Escape", function()
   if cur and not cur.container then wlens.gallery("close") else wlens.quit() end
 end, "Back / close")
 gbind("BackSpace", "back", "Back (parent level)")
-gbind("RightClick", "back", "Back (parent level)")
+bind("v", "set gallery.flat toggle", "Toggle flat view")
 -- The mouse's side "back" button: image -> its grid -> parent level, like a browser.
 bind("MouseBack", "back", "Back")
+bind("MouseForward", "forward", "Forward")
+bind("A-Left", "back", "Back")
+bind("A-Right", "forward", "Forward")
 gbind("c", "set gallery.fit toggle", "Thumbnails: crop / fit")
 gbind("Left", "gallery left");   gbind("h", "gallery left")
 gbind("Right", "gallery right"); gbind("l", "gallery right")

@@ -8,6 +8,16 @@ impl Ui {
     /// `template` expands `{key}` placeholders; `info` is passed to Lua functions.
     pub fn refresh(&mut self, template: &dyn Fn(&str) -> String, info: &LuaValue) {
         for n in &mut self.nodes {
+            if let Some(s) = &mut n.selected {
+                let active = s.when.call::<bool>(info.clone()).unwrap_or_else(|e| {
+                    log::error!("ui selected function: {e}");
+                    false
+                });
+                if s.active.is_none() || n.anim == Some(0.0) || n.opacity <= 0.003 {
+                    s.progress = f64::from(active);
+                }
+                s.active = Some(active);
+            }
             if let Some(src) = &n.text {
                 n.text_value = match src {
                     TextSrc::Template(t) => template(t),
@@ -77,7 +87,8 @@ impl Ui {
             }
         }
         for i in 0..self.nodes.len() {
-            if std::mem::take(&mut self.nodes[i].fresh) {
+            let n = &mut self.nodes[i];
+            if std::mem::take(&mut n.fresh) || (n.anim == Some(0.0) && n.show != Show::Hover) {
                 self.nodes[i].vis = self.target_vis(&self.nodes[i], false, false);
             }
         }

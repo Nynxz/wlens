@@ -60,6 +60,11 @@ impl App {
                 if k.starts_with("gallery.") {
                     self.gallery.requested = None;
                 }
+                if k == "gallery.flat" {
+                    self.update_browser_view();
+                    let flat = self.script.shared.borrow().settings.flat;
+                    self.toast(if flat { "Flat view" } else { "Folder view" });
+                }
                 if k == "wrap" {
                     let on = self.script.shared.borrow().settings.wrap;
                     self.toast(if on {
@@ -112,17 +117,25 @@ impl App {
                 self.sync_visibility();
             }
             Command::Copy(what) => self.copy(&what),
+            Command::Gallery(action, rows) if action == "scroll" => {
+                let grid = self.grid();
+                self.scroll_gallery(
+                    grid,
+                    ScrollInput::Wheel(-rows.unwrap_or(1.0) * grid.row_h()),
+                );
+                return;
+            }
             Command::Gallery(action, amount) => self.gallery_command(&action, amount),
             Command::Back => {
                 // One step at a time: image view -> this level's grid -> parent level.
-                if !self.gallery.active
-                    && (!self.stack.is_empty() || self.items.iter().any(|i| i.container))
-                {
+                if !self.gallery.active {
                     self.set_gallery(true);
+                    self.forward_image = true;
                 } else if !self.back() {
                     self.toast("Already at the top");
                 }
             }
+            Command::Forward => self.forward(),
             Command::Open => self.pending_open = true,
             Command::Video(action, arg) => {
                 #[cfg(feature = "video")]
@@ -175,13 +188,16 @@ impl App {
         let mut cmd = std::process::Command::new("wl-copy");
         cmd.stdin(std::process::Stdio::piped());
         let local = match &item.src {
+            Source::Archive { archive, entry } => crate::io::archive::cached_path(archive, entry)
+                .ok()
+                .filter(|p| p.is_file()),
             Source::Path(p) => Some(p.clone()),
             Source::Url(u) => crate::io::remote::cached_path(u).filter(|p| p.exists()),
         };
         let (data, label): (Vec<u8>, &str) = match what {
             "image" => {
                 let Some(file) = local else {
-                    return self.toast("Not downloaded yet");
+                    return self.toast("Image is not cached yet");
                 };
                 let fmt = image::ImageFormat::from_path(&file).ok().or_else(|| {
                     std::fs::read(&file)
@@ -199,6 +215,7 @@ impl App {
             "name" => (item.name().into_bytes(), "Copied name"),
             "dir" => {
                 let dir = match &item.src {
+                    Source::Archive { archive, .. } => Some(archive.to_string_lossy().into_owned()),
                     Source::Path(p) => std::fs::canonicalize(p)
                         .ok()
                         .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned())),
@@ -208,6 +225,7 @@ impl App {
             }
             _ => {
                 let text = match &item.src {
+                    Source::Archive { .. } => item.src.as_string(),
                     Source::Path(p) => std::fs::canonicalize(p)
                         .unwrap_or(p.clone())
                         .to_string_lossy()

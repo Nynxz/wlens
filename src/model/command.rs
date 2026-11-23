@@ -50,6 +50,7 @@ pub enum Command {
     Gallery(String, Option<f64>),
     /// Leave the current level (see `wlens.push_items`).
     Back,
+    Forward,
     /// Open the current item: enter a container, or view an image.
     Open,
     /// Re-fetch the list (fires the `refresh` hook; else reloads the image).
@@ -187,6 +188,7 @@ impl std::str::FromStr for Command {
                 Command::Copy(args[0].into())
             }
             "back" => Command::Back,
+            "forward" => Command::Forward,
             "open" => Command::Open,
             "refresh" => Command::Refresh,
             "video" => {
@@ -216,7 +218,7 @@ impl std::str::FromStr for Command {
             "gallery" | "grid" => {
                 const ACTIONS: &[&str] = &[
                     "toggle", "open", "close", "up", "down", "left", "right", "pageup", "pagedown",
-                    "bigger", "smaller", "scroll",
+                    "bigger", "smaller", "scroll", "flat",
                 ];
                 let action = args.first().copied().unwrap_or("toggle");
                 if !ACTIONS.contains(&action) {
@@ -226,7 +228,11 @@ impl std::str::FromStr for Command {
                     ));
                 }
                 let amount = args.get(1).map(|a| num(a)).transpose()?;
-                Command::Gallery(action.into(), amount)
+                if action == "flat" {
+                    Command::Set("gallery.flat".into(), "toggle".into())
+                } else {
+                    Command::Gallery(action.into(), amount)
+                }
             }
             "ui" => {
                 need(2)?;
@@ -283,6 +289,8 @@ mod tests {
             p("gallery scroll -2"),
             Command::Gallery("scroll".into(), Some(-2.0))
         );
+        assert_eq!(p("gallery flat"), p("set gallery.flat toggle"));
+        assert_eq!(p("grid flat"), p("gallery flat"));
         assert!("gallery sideways".parse::<Command>().is_err());
     }
 }

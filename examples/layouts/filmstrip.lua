@@ -69,7 +69,7 @@ local panel = {
 
 local title = w.bar {
   position = "top",
-  left = { w.menu_button(), w.gallery_button(), w.back_button(), w.level() },
+  left = { w.menu_button(), w.navigation_button(), w.level() },
   center = { w.filename { max_width = 640 } },
   right = { w.button(w.icons.rotate_right, "rotate 90", "Rotate"),
             w.button(w.icons.info, "ui toggle details", "Details panel"),

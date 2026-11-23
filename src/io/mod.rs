@@ -1,5 +1,6 @@
 //! Background work: decoding, thumbnails, HTTP.
 
+pub mod archive;
 mod atomic;
 pub mod ipc;
 pub mod loader;

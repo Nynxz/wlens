@@ -228,6 +228,40 @@ fn video_controls_show_their_state() {
 }
 
 #[test]
+fn both_flat_view_controls_follow_the_browsing_location() {
+    let s = Script::new().unwrap();
+    s.run_str(
+        "=controls",
+        r#"
+        local w = wlens.widgets
+        local function find_row(tree, label)
+            for _, child in ipairs(tree) do
+                if child.text == label then return tree end
+                local row = find_row(child, label)
+                if row then return row end
+            end
+        end
+        local command = assert(find_row(w.menu(), "Toggle flat view"))
+        local gallery = w.default_settings_tabs()[2][2]
+        local setting
+        for _, row in ipairs(gallery) do
+            if find_row(row, "Flat view") then setting = row end
+        end
+        function check_visibility(expected)
+            assert(command.show() == expected)
+            assert(setting.show() == expected)
+        end
+    "#,
+    )
+    .unwrap();
+    for available in [false, true, false] {
+        s.shared.borrow_mut().has_subfolders = available;
+        s.run_str("=check", &format!("check_visibility({available})"))
+            .unwrap();
+    }
+}
+
+#[test]
 fn edge_navigation_stays_available_at_every_image_zoom() {
     let s = Script::new().unwrap();
     s.run_str(
@@ -244,6 +278,32 @@ fn edge_navigation_stays_available_at_every_image_zoom() {
           img.fitted, img.mode = true, "gallery"
           assert(not zone.show(img))
         end
+        "#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn help_columns_follow_resizes_and_binding_changes() {
+    let s = Script::new().unwrap();
+    s.run_str(
+        "=help",
+        r#"
+        wlens.bind("a", "next", "Forward")
+        wlens.bind("b", "prev", "Back")
+        local width = 500
+        wlens.view = function() return { width = width, height = 600 } end
+        local grid = wlens.widgets.help()[1][2]
+        local first, second = grid[1], grid[2]
+        assert(not second.show() and first[1].text() == "a\nb")
+        width = 800
+        assert(second.show() and second[1].text() == "b" and first[2].text() == "Forward")
+        wlens.bind("a", "prev", "Back")
+        assert(first[1].text() == "b  a" and second[1].text() == "")
+        wlens.bind("b", nil)
+        assert(first[1].text() == "a")
+        wlens.unbind_all()
+        assert(first[1].text() == "" and first[2].text() == "")
         "#,
     )
     .unwrap();
@@ -288,6 +348,62 @@ fn every_layout_region_is_a_panel() {
         "##,
     )
     .unwrap();
+}
+
+#[test]
+fn folder_browser_exposes_archives_as_containers() {
+    let s = Script::new().unwrap();
+    s.lua
+        .globals()
+        .set(
+            "fixture_dir",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"),
+        )
+        .unwrap();
+    s.run_str("=browse", "wlens.widgets.browse(fixture_dir)")
+        .unwrap();
+    let sh = s.shared.borrow();
+    let ItemsOp::Set(items, _) = &sh.pending_items[0] else {
+        panic!("expected folder contents")
+    };
+    assert_eq!(items.len(), 4);
+    assert!(
+        items
+            .iter()
+            .all(|item| item.container && item.icon.is_some())
+    );
+}
+
+#[test]
+fn script_slot_changes_preserve_theme_children_and_visibility() {
+    let script = Script::new().unwrap();
+    script
+        .run_str(
+            "=slots",
+            r#"
+        local w = wlens.widgets
+        local visible = function(img) return img ~= nil end
+        local fixed = w.label("theme")
+        local bar = w.slot("test", { fixed, show = visible })
+        local wrap = w.slot("test", {}, { show = visible })
+        local spec = { bar, wrap }
+        wlens.ui(spec)
+        assert(wrap.show == "never")
+        assert(not pcall(wlens.ui, {{ invalid_property = true }}))
+        assert(wlens._ui_spec == spec)
+        assert(not pcall(wlens.slot, "test", { invalid_property = true }))
+        assert(#bar == 1 and wrap.show == "never")
+        for _ = 1, 2 do
+          wlens.slot("test", w.label("script"))
+          assert(#bar == 2 and #wrap[1] == 1)
+          assert(bar.show == visible and wrap.show == visible)
+          wlens.clear_slot("test")
+          assert(#bar == 1 and bar[1] == fixed and bar.show == visible)
+          assert(#wrap[1] == 0 and wrap.show == "never")
+        end
+    "#,
+        )
+        .unwrap();
 }
 
 #[test]

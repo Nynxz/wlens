@@ -48,6 +48,25 @@ pub enum Align {
     End,
 }
 
+#[derive(Clone, Copy, Default)]
+struct ScrollOffset {
+    shown: f64,
+    target: f64,
+}
+
+impl ScrollOffset {
+    fn clamp(&mut self, max: f64) -> f64 {
+        self.target = self.target.clamp(0.0, max);
+        self.shown = self.shown.clamp(0.0, max);
+        self.shown
+    }
+}
+
+pub enum ScrollInput {
+    Wheel(f64),
+    Pixels(f64),
+}
+
 /// Whether a top-level element keeps the image/grid out of its space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reserve {
@@ -183,6 +202,15 @@ impl BoxStyle {
     }
 }
 
+/// A selected control keeps its box and hit target while its appearance changes.
+struct SelectedStyle {
+    when: Function,
+    style: BoxStyle,
+    justify: Align,
+    active: Option<bool>,
+    progress: f64,
+}
+
 pub struct Node {
     pub id: Option<String>,
     pub anchor: (Align, Align),
@@ -201,6 +229,7 @@ pub struct Node {
     pub text_align: Align,
     pub style: BoxStyle,
     pub hover: Option<BoxStyle>,
+    selected: Option<Box<SelectedStyle>>,
     pub text: Option<TextSrc>,
     pub font: Option<String>,
     pub font_size: Option<f32>,
@@ -263,6 +292,12 @@ pub struct Node {
     pub floating: bool,
     /// Row children flow onto new lines when they don't fit (needs a px width).
     pub wrap: bool,
+    /// Overlay children in a box sized to the largest page, including hidden ones.
+    stack: bool,
+    /// Fit this floating panel and its contents to the available width.
+    responsive: bool,
+    /// Physical width resolved during the panel's width-constrained measurement.
+    layout_width: Option<f32>,
     /// Content taller than the box scrolls (mouse wheel) and is clipped.
     pub scroll: bool,
     /// Cap on the height (px or %), for auto-height panels that should
@@ -277,8 +312,8 @@ pub struct Node {
     /// priority hide, lowest first (e.g. file size before the counter).
     pub priority: Option<i32>,
     pub(super) squeezed_out: bool,
-    pub(super) scroll_y: f64,
-    pub(super) content_h: f64,
+    scroll_y: ScrollOffset,
+    pub(super) max_scroll_y: f64,
     /// Where this element may draw (set by scrolling ancestors).
     pub(super) clip: Option<Rect>,
     /// `attach = "id"`: placed against that element (above it if there's

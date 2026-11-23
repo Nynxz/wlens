@@ -127,6 +127,24 @@ impl Ui {
             let target_hover = (hovered && n.hover.is_some()) as u8 as f64;
             let n = &mut self.nodes[i];
             let d = n.anim.unwrap_or(theme.anim_ui);
+            if n.scroll {
+                moving |= crate::geom::anim::approach(
+                    &mut n.scroll_y.shown,
+                    n.scroll_y.target,
+                    d,
+                    dt,
+                    0.1,
+                );
+            }
+            if let Some(s) = &mut n.selected {
+                moving |= crate::geom::anim::approach(
+                    &mut s.progress,
+                    f64::from(s.active == Some(true)),
+                    d,
+                    dt,
+                    0.005,
+                );
+            }
             moving |= crate::geom::anim::approach(&mut n.vis, target_vis, d, dt, 0.005);
             moving |= crate::geom::anim::approach(&mut n.hover_t, target_hover, d, dt, 0.005);
         }
@@ -235,17 +253,29 @@ impl Ui {
         (r.w >= 1.0 && r.h >= 1.0).then_some(r)
     }
 
-    /// Scroll the scrollable element under `p` by `dy` px (positive = up /
+    /// Scroll the scrollable element under `p` by the supplied pixels (positive = up /
     /// towards the start). Returns whether one took it.
-    pub fn scroll_at(&mut self, p: (f64, f64), dy: f64) -> bool {
+    pub fn scroll_at(&mut self, p: (f64, f64), input: ScrollInput) -> bool {
         let hit = self.paint_order().into_iter().rev().find(|&i| {
             let n = &self.nodes[i];
-            n.scroll && self.under(i, p, 0.05) && n.content_h > n.rect.h + 0.5
+            n.scroll && self.under(i, p, 0.05) && n.max_scroll_y > 0.0
         });
         let Some(i) = hit else { return false };
         let n = &mut self.nodes[i];
-        let max = (n.content_h - n.rect.h).max(0.0);
-        n.scroll_y = (n.scroll_y - dy).clamp(0.0, max);
+        let offset = &mut n.scroll_y;
+        match input {
+            ScrollInput::Wheel(dy) => {
+                // Reverse from the visible position, without finishing a queued wheel flick.
+                if (offset.target - offset.shown) * dy > 0.0 {
+                    offset.target = offset.shown;
+                }
+                offset.target = (offset.target - dy).clamp(0.0, n.max_scroll_y);
+            }
+            ScrollInput::Pixels(dy) => {
+                offset.shown = (offset.shown - dy).clamp(0.0, n.max_scroll_y);
+                offset.target = offset.shown;
+            }
+        }
         true
     }
 

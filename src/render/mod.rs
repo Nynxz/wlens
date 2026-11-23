@@ -91,6 +91,17 @@ impl Quad {
         }
     }
 
+    /// Include both levels used by trilinear sampling at this screen-to-UV scale.
+    fn mip_levels(&self, width: u32, height: u32) -> u32 {
+        let footprint = |axis| {
+            let dx: f32 = self.uv0[axis] * width as f32;
+            let dy: f32 = self.uv1[axis] * height as f32;
+            dx * dx + dy * dy
+        };
+        let squared = footprint(0).max(footprint(1));
+        ((0.5 * squared.log2()).ceil() as u32).saturating_add(1)
+    }
+
     pub fn image(
         r: Rect,
         uv: [[f32; 3]; 2],
@@ -178,6 +189,8 @@ pub struct Renderer {
     mip_layout: wgpu::BindGroupLayout,
 
     textures: HashMap<TexId, wgpu::TextureView>,
+    /// Number of initialized levels for thumbnails that can still be reduced further.
+    thumb_levels: HashMap<TexId, u32>,
     /// Streaming textures (video): the texture itself, so frames can be
     /// written in place, and its size.
     streams: HashMap<TexId, (wgpu::Texture, (u32, u32))>,
@@ -429,6 +442,7 @@ impl Renderer {
             mip_pipeline,
             mip_layout,
             textures: HashMap::new(),
+            thumb_levels: HashMap::new(),
             streams: HashMap::new(),
             next_tex: 1,
             placeholder,
@@ -476,7 +490,7 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
     }
 
-    pub fn upload(&mut self, rgba: &[u8], size: (u32, u32)) -> TexId {
+    fn upload_pixels(&self, rgba: &[u8], size: (u32, u32)) -> wgpu::Texture {
         let mips = 32 - size.0.max(size.1).leading_zeros();
         let texture = create_texture(&self.device, size, mips);
         self.queue.write_texture(
@@ -493,11 +507,31 @@ impl Renderer {
                 depth_or_array_layers: 1,
             },
         );
-        self.generate_mips(&texture, mips);
+        texture
+    }
+
+    fn store_view(&mut self, texture: &wgpu::Texture, levels: u32) -> TexId {
         let id = self.next_tex;
         self.next_tex += 1;
-        self.textures
-            .insert(id, texture.create_view(&Default::default()));
+        self.textures.insert(id, mip_view(texture, 0, levels));
+        id
+    }
+
+    pub fn upload(&mut self, rgba: &[u8], size: (u32, u32)) -> TexId {
+        let texture = self.upload_pixels(rgba, size);
+        let levels = texture.mip_level_count();
+        let mut enc = self.device.create_command_encoder(&Default::default());
+        self.generate_mips(&mut enc, &texture, 0..levels);
+        self.queue.submit([enc.finish()]);
+        self.store_view(&texture, levels)
+    }
+
+    pub fn upload_thumbnail(&mut self, rgba: &[u8], size: (u32, u32)) -> TexId {
+        let texture = self.upload_pixels(rgba, size);
+        let id = self.store_view(&texture, 1);
+        if texture.mip_level_count() > 1 {
+            self.thumb_levels.insert(id, 1);
+        }
         id
     }
 
@@ -554,20 +588,22 @@ impl Renderer {
     pub fn release(&mut self, id: TexId) {
         self.textures.remove(&id);
         self.streams.remove(&id);
-        self.tex_bind_groups.retain(|(t, _), _| *t != Some(id));
+        self.thumb_levels.remove(&id);
+        self.invalidate_bind_groups(id);
     }
 
-    fn generate_mips(&self, texture: &wgpu::Texture, mips: u32) {
-        let mut enc = self.device.create_command_encoder(&Default::default());
-        let views: Vec<_> = (0..mips)
-            .map(|level| {
-                texture.create_view(&wgpu::TextureViewDescriptor {
-                    base_mip_level: level,
-                    mip_level_count: Some(1),
-                    ..Default::default()
-                })
-            })
-            .collect();
+    fn invalidate_bind_groups(&mut self, id: TexId) {
+        self.tex_bind_groups.remove(&(Some(id), Filter::Linear));
+        self.tex_bind_groups.remove(&(Some(id), Filter::Nearest));
+    }
+
+    fn generate_mips(
+        &self,
+        enc: &mut wgpu::CommandEncoder,
+        texture: &wgpu::Texture,
+        levels: std::ops::Range<u32>,
+    ) {
+        let views: Vec<_> = levels.map(|level| mip_view(texture, level, 1)).collect();
         for pair in views.windows(2) {
             let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("mip"),
@@ -583,12 +619,34 @@ impl Renderer {
                     },
                 ],
             });
-            let mut pass = begin_pass(&mut enc, &pair[1], wgpu::Color::TRANSPARENT);
+            let mut pass = begin_pass(enc, &pair[1], wgpu::Color::TRANSPARENT);
             pass.set_pipeline(&self.mip_pipeline);
             pass.set_bind_group(0, &bg, &[]);
             pass.draw(0..3, 0..1);
         }
-        self.queue.submit([enc.finish()]);
+    }
+
+    // Record only the downsampling passes required by this draw. Scrolling in
+    // new tiles shares the frame submission, and offscreen prefetch needs none.
+    fn prepare_thumbnail(&mut self, enc: &mut wgpu::CommandEncoder, id: TexId, quad: &Quad) {
+        let Some(&ready) = self.thumb_levels.get(&id) else {
+            return;
+        };
+        let texture = self.textures[&id].texture();
+        let max = texture.mip_level_count();
+        let needed = quad.mip_levels(texture.width(), texture.height()).min(max);
+        if needed <= ready {
+            return;
+        }
+        self.generate_mips(enc, texture, ready - 1..needed);
+        let view = mip_view(texture, 0, needed);
+        self.textures.insert(id, view);
+        self.invalidate_bind_groups(id);
+        if needed == max {
+            self.thumb_levels.remove(&id);
+        } else {
+            self.thumb_levels.insert(id, needed);
+        }
     }
 
     fn ensure_tex_bind_group(&mut self, tex: Option<TexId>, filter: Filter) {
@@ -669,7 +727,11 @@ impl Renderer {
 
         // Batch consecutive quads that share a texture.
         let mut batches: Vec<(Option<TexId>, std::ops::Range<u32>)> = Vec::new();
-        for (i, (tex, _)) in frame.quads.iter().enumerate() {
+        let mut enc = self.device.create_command_encoder(&Default::default());
+        for (i, (tex, quad)) in frame.quads.iter().enumerate() {
+            if let Some(id) = tex {
+                self.prepare_thumbnail(&mut enc, *id, quad);
+            }
             let i = i as u32;
             match batches.last_mut() {
                 // Never let a batch straddle the scene/UI boundary.
@@ -695,7 +757,6 @@ impl Renderer {
             .prepare(2, &self.device, &self.queue, (w, h), &frame.top_texts);
 
         let target = surface_tex.texture.create_view(&Default::default());
-        let mut enc = self.device.create_command_encoder(&Default::default());
         {
             // Window background, premultiplied (alpha only matters if transparent).
             let [r, g, b, a] = frame.clear.linear();
@@ -751,6 +812,11 @@ impl Renderer {
             }
         }
         self.queue.submit([enc.finish()]);
+        // Let Wayland coalesce redraws until the compositor can display another
+        // frame. Keep the explicit immediate-mode override available for debugging.
+        if self.config.present_mode != wgpu::PresentMode::Immediate {
+            self.window.pre_present_notify();
+        }
         self.queue.present(surface_tex);
         self.text.end_frame();
         true
@@ -763,6 +829,14 @@ fn create_instance_buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
         size: (cap * std::mem::size_of::<Quad>()) as u64,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
+    })
+}
+
+fn mip_view(texture: &wgpu::Texture, base: u32, count: u32) -> wgpu::TextureView {
+    texture.create_view(&wgpu::TextureViewDescriptor {
+        base_mip_level: base,
+        mip_level_count: Some(count),
+        ..Default::default()
     })
 }
 
@@ -824,5 +898,28 @@ fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
         visibility: wgpu::ShaderStages::FRAGMENT,
         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
         count: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thumbnail_filtering_includes_the_next_mip_at_fractional_scales() {
+        let levels = |screen_width: f32| {
+            // A 256x128 image fitted to a 2:1 tile.
+            Quad {
+                uv0: [1.0 / screen_width, 0.0, 0.0, 0.0],
+                uv1: [0.0, 2.0 / screen_width, 0.0, 0.0],
+                ..Default::default()
+            }
+            .mip_levels(256, 128)
+        };
+        assert_eq!(levels(512.0), 1);
+        assert_eq!(levels(256.0), 1);
+        assert_eq!(levels(180.0), 2);
+        assert_eq!(levels(128.0), 2);
+        assert_eq!(levels(48.0), 4);
     }
 }
