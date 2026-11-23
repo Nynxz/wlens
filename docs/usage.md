@@ -4,9 +4,39 @@
 wlens [OPTIONS] [FILES|DIRS|URLS|-]...
 ```
 
-With no arguments wlens opens the images in the current directory. `-`
+With no arguments wlens opens the images in the current directory. Passing a
+directory opens its folder browser. Use `-r` for a flat recursive image list. `-`
 reads paths or URLs from stdin, one per line. `http(s)://` arguments are
 downloaded in the background and cached.
+
+## Viewing images in archives
+
+Opening `wlens photos.zip` shows its top-level folders and images. An archive
+with images only at the root opens on the first image. Use `--browse` to start
+in the grid in either case. Open a folder with Return or a click. A lone
+wrapper folder with the same name as the archive opens automatically.
+
+`wlens --flat photos.zip` reads images from every subfolder as one naturally
+sorted sequence. `--flat --browse` shows the sequence as thumbnails. Press
+`v` or change **Settings → Gallery → Flat view** to switch while browsing.
+The choice applies when you go Back or Forward and is remembered for the next launch.
+Passing `--flat` enables it for that launch.
+`wlens -n 12 photos.zip` also uses the flat sequence to start on page 12.
+ZIP, RAR, 7z, tar and common compressed tar formats are supported, including
+the CBZ, CBR, CB7 and CBT extensions.
+
+When you first view an image or request its thumbnail, a background worker
+extracts the images in archive order. Solid archives need just one
+decompression pass. Extracted images are stored under
+`$XDG_CACHE_HOME/wlens/archives` (normally `~/.cache/wlens/archives`) with
+hashed names. Later sessions reuse them. Editing or replacing an archive
+creates a new cache directory. You can remove the archives cache while
+wlens is closed to reclaim space.
+
+An archive can have up to 10,000 entries, 256 MiB per image and 2 GiB of
+uncompressed content in total. Archive pages use the viewer's supported
+image formats and must be unencrypted. Each page is limited to 64 megapixels
+(64 × 1024² pixels) and 256 MiB of decoded pixel data before display or thumbnailing.
 
 ## Flags
 
@@ -14,7 +44,8 @@ downloaded in the background and cached.
 |---|---|
 | `-r, --recursive` | Include images in subdirectories |
 | `-S, --siblings` | Given one file, browse the other images in its folder |
-| `-b, --browse` | Folders become tiles you can open (see [Galleries](galleries.md)) |
+| `--flat` | Read media from every subfolder as one list |
+| `-b, --browse` | Folders and archives become tiles you can open (see [Galleries](galleries.md)) |
 | `-n, --start N` | Start at the Nth image (1-based) |
 | `-f, --fullscreen` | Start fullscreen |
 | `-t, --theme NAME` | `minimal`, `simple`, `lightbox`, or your own; overrides `wlens.use()` in configs. Env: `WLENS_THEME` |
@@ -65,6 +96,7 @@ The defaults:
 | `g` `Home` / `G` `End` | First / last |
 | `+` `=` `-`, scroll wheel | Zoom (around the cursor) |
 | `1` `2` `3` | 100% / 200% / 300% |
+| `F` (Shift+f) | Reapply the current fit mode |
 | `w` `W` `e` `E` `c` | Fit modes (shrink, contain, width, height, cover) |
 | drag, `H J K L`, `Shift+arrows` | Pan |
 | `>` `<` `\|` `_` `r` | Rotate, flip, reset |
@@ -76,9 +108,10 @@ The defaults:
 | `y` / `Y` | Copy path / copy image |
 | `s` | Slideshow |
 | `a` / `A` | Smooth ↔ pixelated / checkerboard |
-| `f` or `Shift+f` | Toggle fullscreen |
+| `f` | Toggle fullscreen |
 | `P` | Play / pause an animated image |
-| right-click | Previous image; in the gallery, up a level |
+| right-click | Return to thumbnails, then up one folder |
+| `v` | Toggle the remembered flat-view setting |
 | mouse back button | Back (image → grid → parent level) |
 | `F5` | Refresh: asks a script to reload its list (its `refresh` hook), else reloads the image |
 | `R` | Reload the image from disk |
@@ -99,7 +132,13 @@ In the gallery the arrows (and `h j k l`) move the selection, `PageUp` /
 
 - Click the left or right part of the window to go back/forward (invisible
   click zones; the cursor changes over them when there's somewhere to go).
-- Drag to pan. Small images can be moved within the window (`pan = "bounded"`).
+- Drag with the left button to move the image with the pointer. Small images
+  can be moved within the window (`pan = "bounded"`).
+- Hold the middle button to explore a zoomed image with a crosshair. Press near the right edge
+  to see the right side, or move to the center to see the middle. The outer
+  10% on each side reaches the corresponding image edge. When the image is
+  smaller than the viewport, middle-click to place its center at the pointer.
+  Hold and move to reposition it within your configured pan limits.
 - Scroll to zoom around the cursor; in the gallery, scroll or drag to move.
 - Click the file name in the bar to copy its path.
 - Clicking empty space closes an open menu; it never quits.

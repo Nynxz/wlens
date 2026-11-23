@@ -3,6 +3,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Range;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -15,7 +16,7 @@ use winit::platform::wayland::WindowAttributesExtWayland;
 use winit::window::{CursorIcon, Fullscreen, Window, WindowId};
 
 use crate::geom::anim::{approach, lerp};
-use crate::geom::grid::Grid;
+use crate::geom::grid::{Grid, ScrollInput};
 use crate::geom::view::{Rect, View};
 use crate::io::loader::{Decoded, Job, LoadResult, Loader, ThumbResult};
 use crate::lua::{Action, ImageInfo, ItemsOp, Script};
@@ -42,12 +43,17 @@ mod view;
 use cache::{Cache, Slot};
 
 pub enum UserEvent {
+    ArchiveListed {
+        path: PathBuf,
+        result: Result<Vec<Source>, String>,
+    },
     Loaded {
         src: Source,
         result: LoadResult,
     },
     Thumb {
         src: Source,
+        level: u32,
         result: ThumbResult,
     },
     /// From a video player (`id` = which one, so stale players are ignored).
@@ -114,13 +120,15 @@ struct Transition {
 }
 
 struct Press {
+    button: MouseButton,
+    mods: ModifiersState,
     at: PhysicalPosition<f64>,
     dragged: bool,
-    /// Pressed on a slider: drags set its value instead of panning.
-    slider: Option<usize>,
-    /// Pressed on the UI (a bar, a sidebar, a filmstrip): dragging from there
-    /// never pans the image or scrolls the grid.
-    on_ui: bool,
+    target: Option<usize>,
+    /// Slider drags set the value instead of panning.
+    slider: bool,
+    /// The press started on a UI control that consumes drags.
+    blocks_drag: bool,
 }
 
 struct ThumbTex {
@@ -135,6 +143,19 @@ struct ThumbTex {
 /// At most this many thumbnails live on the GPU (~256 KiB each at 256px).
 const MAX_GPU_THUMBS: usize = 600;
 
+#[derive(Clone)]
+pub enum BrowserLocation {
+    Archive(crate::model::archive_folder::ArchiveFolder),
+    Directory(PathBuf),
+}
+
+#[derive(Clone)]
+pub struct Browser {
+    pub location: BrowserLocation,
+    /// Layout of the cached item list at this history level.
+    pub flat: bool,
+}
+
 /// A level we can go `back` to (see `wlens.push_items`).
 struct Level {
     items: Vec<Item>,
@@ -142,6 +163,8 @@ struct Level {
     scroll: f64,
     title: Option<String>,
     more: bool,
+    browser: Option<Browser>,
+    forward_image: bool,
 }
 
 #[derive(Default)]
@@ -152,6 +175,8 @@ struct Gallery {
     /// Scroll target and the animated value drawn.
     scroll: f64,
     shown: f64,
+    /// Tile held under a stationary wheel gesture as columns reflow.
+    resize_anchor: Option<((f64, f64), usize)>,
     thumbs: HashMap<Source, ThumbTex>,
     pending: HashSet<(Source, u32)>,
     failed: HashSet<Source>,
@@ -182,7 +207,9 @@ pub struct App {
     nav_dir: f32,
     gallery: Gallery,
     stack: Vec<Level>,
-    level_title: Option<String>,
+    forward_levels: Vec<Level>,
+    pub browser: Option<Browser>,
+    forward_image: bool,
     /// (depth, item count) for which `end_reached` already fired.
     end_fired: Option<(usize, usize)>,
     /// Tried to step past the end while more was loading: step once it arrives.
@@ -201,6 +228,7 @@ pub struct App {
     muted: bool,
     /// Set by commands that should open the current container once they finish.
     pending_open: bool,
+    listing_archive: Option<PathBuf>,
     /// The window or renderer couldn't be created; exit with an error.
     pub startup_failed: bool,
 
@@ -268,7 +296,9 @@ impl App {
             nav_dir: 1.0,
             gallery: Gallery::default(),
             stack: Vec::new(),
-            level_title: None,
+            forward_levels: Vec::new(),
+            browser: None,
+            forward_image: false,
             end_fired: None,
             pending_advance: false,
             anim_paused: false,
@@ -289,6 +319,7 @@ impl App {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false),
             pending_open: false,
+            listing_archive: None,
             startup_failed: false,
             ui,
             text_dirty: true,

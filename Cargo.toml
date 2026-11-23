@@ -18,6 +18,7 @@ gstreamer = { version = "0.25.4", optional = true }
 gstreamer-app = { version = "0.25.2", optional = true }
 gstreamer-video = { version = "0.25.4", optional = true }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff", "exr", "qoi", "ico", "pnm", "tga"] }
+libc = "0.2"
 log = "0.4.35"
 md5 = "0.8"
 mlua = { version = "0.12.2", features = ["lua54", "vendored", "serialize"] }

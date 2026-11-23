@@ -148,7 +148,7 @@ do
   end
   for _, name in ipairs({
     "next", "prev", "first", "last", "zoom", "fit", "pan", "rotate", "flip", "reset",
-    "fullscreen", "reload", "quit", "copy", "gallery", "back", "open", "refresh",
+    "fullscreen", "reload", "quit", "copy", "gallery", "back", "forward", "open", "refresh",
     "animation", "video",
   }) do
     wlens[name] = command(name)
@@ -188,6 +188,7 @@ pub enum ItemsOp {
     Pop,
     /// `wlens.set_more`: the current list may continue.
     More(bool),
+    Directory(std::path::PathBuf),
 }
 
 pub struct Binding {
@@ -248,6 +249,7 @@ pub struct Shared {
     pub pending_items: Vec<ItemsOp>,
     /// How many levels deep we are (mirrored from the app for `wlens.depth()`).
     pub depth: usize,
+    pub level: Option<String>,
     /// `wlens.fetch` requests waiting to be handed to the loader.
     pub fetch_queue: Vec<(u64, crate::io::remote::Request)>,
     pub fetch_callbacks: HashMap<u64, Function>,
@@ -328,6 +330,14 @@ impl Script {
         args.set("theme", theme)?;
         args.set("palette", palette)?;
         self.lua.globals().get::<Table>("wlens")?.set("args", args)
+    }
+
+    pub fn directory_items(&self, path: &std::path::Path) -> mlua::Result<Vec<Item>> {
+        let list: Table = self
+            .lua
+            .load("return wlens.widgets.directory_items(...)")
+            .call(path.to_string_lossy().as_ref())?;
+        parse_items(&list)
     }
 
     pub fn run_str(&self, name: &str, src: &str) -> mlua::Result<()> {
@@ -601,6 +611,7 @@ fn parse_items(list: &Table) -> mlua::Result<Vec<Item>> {
                         LuaValue::Nil => None,
                         v => Some(to_opt_string(&v)?),
                     },
+                    archive_folder: None,
                     icon: t.get("icon")?,
                     meta: t.get("meta")?,
                     video: t.get::<Option<bool>>("video")?.unwrap_or(false),

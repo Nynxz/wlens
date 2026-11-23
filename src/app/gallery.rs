@@ -46,6 +46,11 @@ impl App {
         if on == self.gallery.active {
             return;
         }
+        if !on {
+            self.forward_image = false;
+            self.forward_levels.clear();
+        }
+        self.gallery.resize_anchor = None;
         self.gallery.active = on;
         if on {
             self.ensure_selection_visible();
@@ -90,14 +95,32 @@ impl App {
                 };
                 t.gallery_size = size.clamp(48.0, 1024.0);
                 drop(sh);
+                let resized = self.grid();
+                if g != resized && n > 0 {
+                    let shown = self.gallery.shown;
+                    let pointer = self.zoom_anchor.filter(|&p| g.vp.contains(p));
+                    let selected = g.cell_rect(self.index, shown).center();
+                    let point = pointer.unwrap_or_else(|| {
+                        if g.vp.contains(selected) {
+                            selected
+                        } else {
+                            g.vp.center()
+                        }
+                    });
+                    let anchor = self
+                        .gallery
+                        .resize_anchor
+                        .filter(|&(p, i)| Some(p) == pointer && i < n)
+                        .map(|(_, i)| i)
+                        .unwrap_or_else(|| g.nearest_tile(point, shown, n));
+                    self.gallery.resize_anchor = pointer.map(|p| (p, anchor));
+                    let scroll = g
+                        .resized_scroll(&resized, anchor, shown, point.1)
+                        .clamp(0.0, resized.max_scroll(self.grid_len(&resized)));
+                    self.gallery.scroll = scroll;
+                    self.gallery.shown = scroll;
+                }
                 self.gallery.requested = None;
-                self.ensure_selection_visible();
-            }
-            "scroll" => {
-                let rows = amount.unwrap_or(1.0);
-                let row_h = g.cell + g.label + g.gap;
-                self.gallery.scroll = (self.gallery.scroll + rows * row_h)
-                    .clamp(0.0, g.max_scroll(self.grid_len(&g)));
             }
             _ if !self.gallery.active => {}
             "left" => self.navigate(i - 1),
@@ -112,6 +135,14 @@ impl App {
         }
     }
 
+    pub(super) fn scroll_gallery(&mut self, grid: Grid, input: ScrollInput) {
+        let max = grid.max_scroll(self.grid_len(&grid));
+        let g = &mut self.gallery;
+        g.resize_anchor = None;
+        input.apply(&mut g.shown, &mut g.scroll, max);
+        self.redraw();
+    }
+
     /// Ask the loader for thumbnails around what's visible (only when that changes).
     pub(super) fn request_thumbs(&mut self) {
         if !self.gallery.active || self.items.is_empty() {
@@ -124,7 +155,7 @@ impl App {
         // Within two rows of the end: let scripts load more (infinite scroll).
         self.maybe_end_reached(range.end >= n);
         let n = self.items.len();
-        let range = g.visible(n, self.gallery.scroll, 2);
+        let range = g.visible(n, self.gallery.shown, 2);
         let key = (range.clone(), level, n);
         if self.gallery.requested.as_ref() == Some(&key) {
             return;
@@ -136,9 +167,10 @@ impl App {
                 self.gallery.pending.remove(&(s, l));
             }
         }
-        // Visible cells first, nearest the selection first.
+        // Load the rows on screen before their prefetch margin.
         let mut order: Vec<usize> = range.collect();
-        order.sort_by_key(|&i| i.abs_diff(self.index));
+        let visible = g.visible(n, self.gallery.shown, 0);
+        order.sort_by_key(|&i| (!visible.contains(&i), i.abs_diff(self.index)));
         let mut jobs = Vec::new();
         for i in order {
             if self.items[i].container && self.items[i].thumb.is_none() {
@@ -164,7 +196,9 @@ impl App {
             self.gallery.pending.insert(key);
             jobs.push(Job::Thumb(src.clone(), self.items[i].thumb.clone(), level));
         }
-        loader.request(jobs);
+        if !jobs.is_empty() {
+            loader.request(jobs);
+        }
     }
 
     /// Load what `image` elements in the UI show (through the thumbnail cache).
@@ -194,15 +228,21 @@ impl App {
         }
     }
 
-    pub(super) fn on_thumb(&mut self, src: Source, result: ThumbResult) {
-        let level =
-            |t: &crate::io::thumbs::Thumb| crate::io::thumbs::level_for(t.size.0.max(t.size.1));
+    pub(super) fn on_thumb(&mut self, src: Source, level: u32, result: ThumbResult) {
+        self.gallery.pending.remove(&(src.clone(), level));
+        if self
+            .gallery
+            .thumbs
+            .get(&src)
+            .is_some_and(|t| t.level >= level)
+        {
+            return;
+        }
         match result {
             Ok(t) => {
-                let lvl = level(&t);
-                self.gallery.pending.retain(|(s, _)| *s != src);
+                self.gallery.failed.remove(&src);
                 let Some(r) = &mut self.renderer else { return };
-                let tex = r.upload(&t.rgba, t.size);
+                let tex = r.upload_thumbnail(&t.rgba, t.size);
                 let frame = self.gallery.frame;
                 if let Some(old) = self.gallery.thumbs.insert(
                     src.clone(),
@@ -210,29 +250,23 @@ impl App {
                         tex,
                         size: t.size,
                         orig: t.orig_size,
-                        level: lvl,
+                        level,
                         used: frame,
                     },
                 ) {
                     r.release(old.tex);
                 }
                 // Evict the least recently drawn thumbnails beyond the budget.
-                if self.gallery.thumbs.len() > MAX_GPU_THUMBS {
-                    let mut by_age: Vec<(u64, Source)> = self
+                if self.gallery.thumbs.len() > MAX_GPU_THUMBS
+                    && let Some(oldest) = self
                         .gallery
                         .thumbs
                         .iter()
-                        .map(|(s, t)| (t.used, s.clone()))
-                        .collect();
-                    by_age.sort_by_key(|(u, _)| *u);
-                    for (_, s) in by_age
-                        .into_iter()
-                        .take(self.gallery.thumbs.len() - MAX_GPU_THUMBS)
-                    {
-                        if let Some(t) = self.gallery.thumbs.remove(&s) {
-                            r.release(t.tex);
-                        }
-                    }
+                        .min_by_key(|(_, thumb)| thumb.used)
+                        .map(|(src, _)| src.clone())
+                    && let Some(t) = self.gallery.thumbs.remove(&oldest)
+                {
+                    r.release(t.tex);
                 }
                 if self.current_src() == Some(&src) {
                     self.update_info();
@@ -241,7 +275,6 @@ impl App {
             }
             Err(e) => {
                 log::debug!("thumbnail {}: {e}", src.as_string());
-                self.gallery.pending.retain(|(s, _)| *s != src);
                 self.gallery.failed.insert(src);
                 self.redraw();
             }
@@ -386,6 +419,32 @@ impl App {
                     op,
                 );
                 quads.push((Some(t.tex), q));
+            }
+            if container
+                && has_thumb
+                && let Some(icon) = &self.items[i].icon
+            {
+                let side = (24.0 * scale as f64).min(r.w).min(r.h);
+                let badge = Rect::new(r.x + 3.0, r.y + 3.0, side, side);
+                quads.push((
+                    None,
+                    Quad::solid(
+                        badge,
+                        crate::model::theme::Color([0.0, 0.0, 0.0, 0.72]),
+                        radius,
+                        none,
+                        op,
+                    ),
+                ));
+                texts.push(TextDraw {
+                    text: icon.clone(),
+                    family: th.font_family.clone(),
+                    size: (side * 0.68) as f32,
+                    rect: badge,
+                    align: Align::Center,
+                    color: crate::model::theme::Color([1.0, 1.0, 1.0, op]),
+                    clip: None,
+                });
             }
             let ring = if i == self.index {
                 Some((th.gallery_selected, th.gallery_selected_width))
