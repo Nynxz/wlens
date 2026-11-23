@@ -60,11 +60,15 @@ impl Ui {
         // Children always have larger indices than parents, so a reverse
         // sweep measures leaves first.
         for i in (0..self.nodes.len()).rev() {
+            self.nodes[i].layout_width = None;
             self.measure(i, scale, theme, m);
         }
         for r in self.roots.clone() {
+            if self.nodes[r].responsive {
+                self.reflow(r, win.w as f32, scale, theme, m);
+            }
             let n = &self.nodes[r];
-            let w = resolve(n.width, n.measured.0, win.w as f32, scale);
+            let w = n.width_for(win.w as f32, scale);
             let h = cap_height(
                 n,
                 resolve(n.height, n.measured.1, win.h as f32, scale),
@@ -81,7 +85,7 @@ impl Ui {
             };
             let x = place(n.anchor.0, n.x, w, win.x, win.w);
             let y = place(n.anchor.1, n.y, h, win.y, win.h);
-            self.arrange(r, Rect::new(x, y, w as f64, h as f64), scale);
+            self.arrange(r, Rect::new(x, y, w as f64, h as f64), scale, theme, m);
         }
     }
 
@@ -119,7 +123,7 @@ impl Ui {
                 t.y + t.h + gap
             };
             let y = y.min(win.y + win.h - r.h).max(win.y);
-            self.arrange(i, Rect::new(x, y, r.w, r.h), scale);
+            self.arrange(i, Rect::new(x, y, r.w, r.h), scale, theme, m);
         }
         // Attached panels now have their final position, including their scroll clip.
         for r in self.roots.clone() {
@@ -152,6 +156,19 @@ impl Ui {
         }
     }
 
+    // Intrinsic sizes are known. Pass the available width down, then measure
+    // heights on the way back so wrapped lines count towards scrolling and centering.
+    fn reflow(&mut self, i: usize, available: f32, scale: f32, theme: &Theme, m: &mut dyn Measure) {
+        let n = &self.nodes[i];
+        let width = resolve(n.width, n.measured.0, available, scale).min(available);
+        let inner = (width - (n.padding[1] + n.padding[3]) * scale).max(0.0);
+        self.nodes[i].layout_width = Some(width);
+        for c in self.nodes[i].children.clone() {
+            self.reflow(c, inner, scale, theme, m);
+        }
+        self.measure(i, scale, theme, m);
+    }
+
     pub(super) fn measure(&mut self, i: usize, scale: f32, theme: &Theme, m: &mut dyn Measure) {
         let n = &self.nodes[i];
         let [pt, pr, pb, pl] = n.padding.map(|p| p * scale);
@@ -168,6 +185,8 @@ impl Ui {
                 (Some(a), Some(b)) => Some(a.min(b)),
                 (a, b) => a.or(b),
             };
+            let available = n.layout_width.map(|w| (w - pl - pr).max(0.0));
+            let limit = limit.into_iter().chain(available).reduce(f32::min);
             if let Some(max) = limit
                 && content.0 > max
             {
@@ -180,20 +199,24 @@ impl Ui {
         let gap = n.gap * scale;
         let mut count = 0;
         for &c in &n.children {
-            if self.collapsed(c) || self.nodes[c].floating {
+            if (!n.stack && self.collapsed(c)) || self.nodes[c].floating {
                 continue;
             }
             let cn = &self.nodes[c];
-            let cw = match cn.width {
+            let cw = cn.layout_width.unwrap_or(match cn.width {
                 Size::Px(p) => p * scale,
                 Size::Percent(_) => 0.0,
                 Size::Auto => cn.measured.0,
-            };
+            });
             let ch = match cn.height {
                 Size::Px(p) => p * scale,
                 Size::Percent(_) => 0.0,
                 Size::Auto => cn.measured.1,
             };
+            if n.stack {
+                content = (content.0.max(cw), content.1.max(ch));
+                continue;
+            }
             match n.dir {
                 Dir::Row => content = (content.0 + cw, content.1.max(ch)),
                 Dir::Column => content = (content.0.max(cw), content.1 + ch),
@@ -209,9 +232,12 @@ impl Ui {
         // A wrapping row of known width: lines of children.
         if n.wrap
             && n.dir == Dir::Row
-            && let Size::Px(w) = n.width
+            && let Some(w) = n.layout_width.or(match n.width {
+                Size::Px(w) => Some(w * scale),
+                _ => None,
+            })
         {
-            let avail = (w * scale - pl - pr).max(1.0);
+            let avail = (w - pl - pr).max(1.0);
             let (mut x, mut line_h, mut total_h, mut max_w) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
             let mut first = true;
             for &c in &n.children {
@@ -219,10 +245,10 @@ impl Ui {
                     continue;
                 }
                 let cn = &self.nodes[c];
-                let cw = match cn.width {
+                let cw = cn.layout_width.unwrap_or(match cn.width {
                     Size::Px(p) => p * scale,
                     _ => cn.measured.0,
-                };
+                });
                 let ch = match cn.height {
                     Size::Px(p) => p * scale,
                     _ => cn.measured.1,
@@ -302,7 +328,7 @@ impl Ui {
         }
     }
 
-    pub(super) fn arrange(&mut self, i: usize, rect: Rect, scale: f32) {
+    fn arrange(&mut self, i: usize, rect: Rect, scale: f32, theme: &Theme, m: &mut dyn Measure) {
         self.nodes[i].rect = rect;
         let n = &self.nodes[i];
         let [pt, pr, pb, pl] = n.padding.map(|p| (p * scale) as f64);
@@ -317,7 +343,7 @@ impl Ui {
             Dir::Row => (inner.w, inner.h),
             Dir::Column => (inner.h, inner.w),
         };
-        let (dir, align, justify) = (n.dir, n.align, n.justify);
+        let (dir, align, justify, stack) = (n.dir, n.align, n.justify, n.stack);
         let (children, gone): (Vec<usize>, Vec<usize>) = n
             .children
             .clone()
@@ -327,11 +353,15 @@ impl Ui {
             self.clear_rects(c);
         }
         // Anchored children float over this element's inner box.
-        let (floating, children): (Vec<usize>, Vec<usize>) =
-            children.into_iter().partition(|&c| self.nodes[c].floating);
+        let (floating, children): (Vec<usize>, Vec<usize>) = children
+            .into_iter()
+            .partition(|&c| stack || self.nodes[c].floating);
         for c in floating {
+            if self.nodes[c].responsive {
+                self.reflow(c, inner.w as f32, scale, theme, m);
+            }
             let cn = &self.nodes[c];
-            let w = resolve(cn.width, cn.measured.0, inner.w as f32, scale);
+            let w = cn.width_for(inner.w as f32, scale);
             let h = cap_height(
                 cn,
                 resolve(cn.height, cn.measured.1, inner.h as f32, scale),
@@ -348,30 +378,29 @@ impl Ui {
             };
             // Too big for its area (a small window)? Keep it on screen.
             let win = self.win;
-            let x = place(cn.anchor.0, cn.x, w, inner.x, inner.w)
-                .min(win.x + win.w - w as f64)
-                .max(win.x);
-            let y = place(cn.anchor.1, cn.y, h, inner.y, inner.h)
-                .min(win.y + win.h - h as f64)
-                .max(win.y);
-            self.arrange(c, Rect::new(x, y, w as f64, h as f64), scale);
+            let mut x = place(cn.anchor.0, cn.x, w, inner.x, inner.w);
+            let mut y = place(cn.anchor.1, cn.y, h, inner.y, inner.h);
+            if cn.floating {
+                x = x.min(win.x + win.w - w as f64).max(win.x);
+                y = y.min(win.y + win.h - h as f64).max(win.y);
+            }
+            self.arrange(c, Rect::new(x, y, w as f64, h as f64), scale, theme, m);
         }
         if children.is_empty() {
-            self.nodes[i].content_h = 0.0;
+            self.nodes[i].max_scroll_y = 0.0;
             self.nodes[i].scroll_y = ScrollOffset::default();
             return;
         }
 
         let main_of = |c: &Node| -> (f64, f64) {
-            let (size, measured) = match dir {
-                Dir::Row => (c.width, c.measured.0),
-                Dir::Column => (c.height, c.measured.1),
-            };
             let cross = match dir {
                 Dir::Row => resolve(c.height, c.measured.1, cross_avail as f32, scale),
-                Dir::Column => resolve(c.width, c.measured.0, cross_avail as f32, scale),
+                Dir::Column => c.width_for(cross_avail as f32, scale),
             } as f64;
-            let main = resolve(size, measured, main_avail as f32, scale) as f64;
+            let main = match dir {
+                Dir::Row => c.width_for(main_avail as f32, scale),
+                Dir::Column => resolve(c.height, c.measured.1, main_avail as f32, scale),
+            } as f64;
             // max_height caps the vertical size (main for columns, cross for rows).
             let cap = |v: f64, avail: f64| match c.max_height {
                 Some(m) => v.min(resolve(m, f32::MAX, avail as f32, scale) as f64),
@@ -386,7 +415,15 @@ impl Ui {
         let wrap = self.nodes[i].wrap && dir == Dir::Row;
         // Scrolling is vertical: columns, and wrapping rows (lines stack down).
         let scrolls = self.nodes[i].scroll && (dir == Dir::Column || wrap);
-        if wrap {
+        // When a responsive row fits on one line its growing label can still
+        // take the spare space and keep the control aligned on the right.
+        let fits_growing_row = wrap
+            && !scrolls
+            && self.nodes[i].layout_width.is_some()
+            && children.iter().any(|&c| self.nodes[c].grow)
+            && sizes.iter().map(|s| s.0).sum::<f64>() + gap * (children.len() - 1) as f64
+                <= inner.w + 0.5;
+        if wrap && !fits_growing_row {
             // Lines left to right, top to bottom.
             let place = |sizes: &[(f64, f64)]| -> (Vec<(f64, f64)>, f64) {
                 let (mut x, mut y, mut line_h) = (0.0f64, 0.0f64, 0.0f64);
@@ -406,13 +443,19 @@ impl Ui {
             let (at, content) = place(&sizes);
             let off = if scrolls {
                 let n = &mut self.nodes[i];
-                n.content_h = content + (n.rect.h - inner.h);
-                n.scroll_y.clamp((content - inner.h).max(0.0))
+                n.max_scroll_y = (content - inner.h).max(0.0);
+                n.scroll_y.clamp(n.max_scroll_y)
             } else {
                 0.0
             };
             for ((&c, &(w, h)), (x, y)) in children.iter().zip(&sizes).zip(at) {
-                self.arrange(c, Rect::new(inner.x + x, inner.y + y - off, w, h), scale);
+                self.arrange(
+                    c,
+                    Rect::new(inner.x + x, inner.y + y - off, w, h),
+                    scale,
+                    theme,
+                    m,
+                );
             }
             return;
         }
@@ -497,17 +540,21 @@ impl Ui {
         };
         let gaps = gap * (children.len() - 1) as f64;
         let leftover = (main_avail - fixed - gaps).max(0.0);
-        let cursor = match (growers, justify) {
+        let offset = |alignment| match (growers, alignment) {
             (0, Align::Center) => leftover / 2.0,
             (0, Align::End) => leftover,
             _ => 0.0,
         };
+        let mut cursor = offset(justify);
+        if let Some(s) = &self.nodes[i].selected {
+            cursor += (offset(s.justify) - cursor) * s.progress;
+        }
         let scroll_y = if scrolls {
             // Keep the offset within the content (it may have shrunk).
             let content = fixed + gaps;
             let n = &mut self.nodes[i];
-            n.content_h = content + (n.rect.h - inner.h);
-            n.scroll_y.clamp((content - main_avail).max(0.0))
+            n.max_scroll_y = (content - main_avail).max(0.0);
+            n.scroll_y.clamp(n.max_scroll_y)
         } else {
             0.0
         };
@@ -527,9 +574,16 @@ impl Ui {
                 Dir::Row => Rect::new(inner.x + cursor, inner.y + cross_off, main, cross),
                 Dir::Column => Rect::new(inner.x + cross_off, inner.y + cursor, cross, main),
             };
-            self.arrange(c, r, scale);
+            self.arrange(c, r, scale, theme, m);
             cursor += main + gap;
         }
+    }
+}
+
+impl Node {
+    fn width_for(&self, available: f32, scale: f32) -> f32 {
+        self.layout_width
+            .unwrap_or_else(|| resolve(self.width, self.measured.0, available, scale))
     }
 }
 

@@ -200,6 +200,15 @@ impl BoxStyle {
     }
 }
 
+/// A selected control keeps its box and hit target while its appearance changes.
+struct SelectedStyle {
+    when: Function,
+    style: BoxStyle,
+    justify: Align,
+    active: Option<bool>,
+    progress: f64,
+}
+
 pub struct Node {
     pub id: Option<String>,
     pub anchor: (Align, Align),
@@ -218,6 +227,7 @@ pub struct Node {
     pub text_align: Align,
     pub style: BoxStyle,
     pub hover: Option<BoxStyle>,
+    selected: Option<Box<SelectedStyle>>,
     pub text: Option<TextSrc>,
     pub font: Option<String>,
     pub font_size: Option<f32>,
@@ -238,6 +248,8 @@ pub struct Node {
     /// the image); clicks, scrolling and drags reach whatever is below.
     /// Its children can still be clicked.
     pub pass_through: bool,
+    /// Handle clicks here, but let drags move the underlying view.
+    pub drag_through: bool,
     /// Pointer cursor over this clickable element (default true).
     pub pointer: bool,
     /// `cursor = function(img) return "pointer" | "default" end`
@@ -278,6 +290,12 @@ pub struct Node {
     pub floating: bool,
     /// Row children flow onto new lines when they don't fit (needs a px width).
     pub wrap: bool,
+    /// Overlay children in a box sized to the largest page, including hidden ones.
+    stack: bool,
+    /// Fit this floating panel and its contents to the available width.
+    responsive: bool,
+    /// Physical width resolved during the panel's width-constrained measurement.
+    layout_width: Option<f32>,
     /// Content taller than the box scrolls (mouse wheel) and is clipped.
     pub scroll: bool,
     /// Cap on the height (px or %), for auto-height panels that should
@@ -293,7 +311,7 @@ pub struct Node {
     pub priority: Option<i32>,
     pub(super) squeezed_out: bool,
     scroll_y: ScrollOffset,
-    pub(super) content_h: f64,
+    pub(super) max_scroll_y: f64,
     /// Where this element may draw (set by scrolling ancestors).
     pub(super) clip: Option<Rect>,
     /// `attach = "id"`: placed against that element (above it if there's
@@ -402,6 +420,7 @@ pub struct Hit {
     pub clickable: Option<usize>,
     /// Cursor is over some visible UI box (so it shouldn't count as a backdrop click).
     pub over_ui: bool,
+    pub blocks_drag: bool,
     /// Show a pointer cursor (clickable and not opted out).
     pub pointer: bool,
 }

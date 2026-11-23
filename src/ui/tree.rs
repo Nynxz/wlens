@@ -4,15 +4,14 @@
 use super::*;
 
 impl Ui {
-    /// Emit quads and text for every visible node, in paint order.
     /// Rebuild `children = function` elements whose key (the current item)
-    /// changed. Returns whether anything was rebuilt.
-    pub fn update_dynamic(&mut self, info: &LuaValue, key: &str) -> bool {
+    /// changed. Return the new indices of surviving nodes after compaction.
+    pub fn update_dynamic(&mut self, info: &LuaValue, key: &str) -> Option<Vec<usize>> {
         let todo: Vec<usize> = (0..self.nodes.len())
             .filter(|&i| self.nodes[i].dyn_children.is_some() && self.nodes[i].dyn_key != key)
             .collect();
         if todo.is_empty() {
-            return false;
+            return None;
         }
         for i in todo {
             self.nodes[i].dyn_key = key.to_string();
@@ -75,8 +74,7 @@ impl Ui {
             }
             debug_assert!(now.iter().all(|&n| n >= first_new));
         }
-        self.compact();
-        true
+        Some(self.compact())
     }
 
     fn preorder(&self, i: usize, out: &mut Vec<usize>) {
@@ -103,7 +101,7 @@ impl Ui {
     }
 
     /// Drop detached nodes, renumbering so parents still come before children.
-    pub(super) fn compact(&mut self) {
+    fn compact(&mut self) -> Vec<usize> {
         let mut old: Vec<Option<Node>> = std::mem::take(&mut self.nodes)
             .into_iter()
             .map(Some)
@@ -140,5 +138,6 @@ impl Ui {
         self.tip = self
             .tip
             .and_then(|(i, t)| map.get(i).filter(|&&m| m != usize::MAX).map(|&m| (m, t)));
+        map
     }
 }

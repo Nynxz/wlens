@@ -136,6 +136,15 @@ impl Ui {
                     0.1,
                 );
             }
+            if let Some(s) = &mut n.selected {
+                moving |= crate::geom::anim::approach(
+                    &mut s.progress,
+                    f64::from(s.active == Some(true)),
+                    d,
+                    dt,
+                    0.005,
+                );
+            }
             moving |= crate::geom::anim::approach(&mut n.vis, target_vis, d, dt, 0.005);
             moving |= crate::geom::anim::approach(&mut n.hover_t, target_hover, d, dt, 0.005);
         }
@@ -249,11 +258,10 @@ impl Ui {
     pub fn scroll_at(&mut self, p: (f64, f64), input: ScrollInput) -> bool {
         let hit = self.paint_order().into_iter().rev().find(|&i| {
             let n = &self.nodes[i];
-            n.scroll && self.under(i, p, 0.05) && n.content_h > n.rect.h + 0.5
+            n.scroll && self.under(i, p, 0.05) && n.max_scroll_y > 0.0
         });
         let Some(i) = hit else { return false };
         let n = &mut self.nodes[i];
-        let max = (n.content_h - n.rect.h).max(0.0);
         let offset = &mut n.scroll_y;
         match input {
             ScrollInput::Wheel(dy) => {
@@ -261,10 +269,10 @@ impl Ui {
                 if (offset.target - offset.shown) * dy > 0.0 {
                     offset.target = offset.shown;
                 }
-                offset.target = (offset.target - dy).clamp(0.0, max);
+                offset.target = (offset.target - dy).clamp(0.0, n.max_scroll_y);
             }
             ScrollInput::Pixels(dy) => {
-                offset.shown = (offset.shown - dy).clamp(0.0, max);
+                offset.shown = (offset.shown - dy).clamp(0.0, n.max_scroll_y);
                 offset.target = offset.shown;
             }
         }
@@ -331,6 +339,7 @@ impl Ui {
         Hit {
             clickable,
             over_ui: top.is_some(),
+            blocks_drag: top.is_some_and(|i| !self.nodes[i].drag_through),
             pointer: top.is_some_and(|i| active(i) && self.nodes[i].pointer),
         }
     }

@@ -97,6 +97,9 @@ impl App {
             };
             self.toast(&format!("Script error: {line}{more}"));
         }
+        if settings_dirty {
+            self.update_browser_view();
+        }
         if settings_dirty && self.renderer.is_some() {
             // Lua changed settings directly: re-fit, re-query thumbnails, refresh text.
             self.gallery.requested = None;
@@ -141,8 +144,7 @@ impl App {
         }
     }
 
-    /// Re-evaluate text, lay out the UI, and update the viewport.
-    pub(super) fn layout_ui(&mut self) {
+    pub(super) fn refresh_ui(&mut self) {
         if self.text_dirty {
             self.text_dirty = false;
             let script = &self.script;
@@ -163,9 +165,16 @@ impl App {
                 "{}|{}|{}|{}|{}|{}x{}|{generation}",
                 info.path, info.index, info.count, info.mode, info.depth, ww as i64, wh as i64
             );
-            if self.ui.update_dynamic(&info_table, &key) {
-                // Node indices may have changed during tree compaction.
-                self.press = None;
+            if let Some(indices) = self.ui.update_dynamic(&info_table, &key)
+                && let Some(press) = &mut self.press
+                && let Some(old) = press.target
+            {
+                let new = indices[old];
+                if new == usize::MAX {
+                    self.press = None;
+                } else {
+                    press.target = Some(new);
+                }
             }
             self.ui.refresh(&expand, &info_table);
             if self
@@ -182,6 +191,10 @@ impl App {
             // Text functions may have called wlens.* APIs.
             self.drain_title_only();
         }
+    }
+
+    pub(super) fn layout_ui(&mut self) {
+        self.refresh_ui();
         let Some(r) = &mut self.renderer else { return };
         let win = Rect::new(0.0, 0.0, r.size().0 as f64, r.size().1 as f64);
         let logical = (win.w / self.scale as f64, win.h / self.scale as f64);
