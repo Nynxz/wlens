@@ -179,7 +179,7 @@ impl App {
                 .as_deref()
                 .is_some_and(|id| !self.ui.input_visible(id))
             {
-                self.focus = None;
+                self.set_input_focus(None);
             }
             let sh = self.script.shared.borrow();
             self.ui.apply_inputs(&sh.inputs, self.focus.as_deref());

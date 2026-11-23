@@ -291,6 +291,35 @@ fn every_layout_region_is_a_panel() {
 }
 
 #[test]
+fn slideshow_interval_field_commits_only_changed_valid_numbers() {
+    let script = Script::new().unwrap();
+    script.shared.borrow_mut().started = true;
+    script
+        .run_str(
+            "=interval-field",
+            r#"
+        local field
+        for _, row in ipairs(wlens.widgets.default_settings_tabs()[1][2]) do
+          if row[2].id == "settings_slideshow_interval" then field = row[2].input end
+        end
+        assert(field.value() == "4" and field.on_change == nil)
+        for _, text in ipairs({ "", "0", "-1", "oops", "4.0" }) do
+          field.on_submit(text)
+          assert(field.value() == "4")
+        end
+        field.on_submit("2.5")
+        field.on_submit("2.50")
+        assert(field.value() == "2.5")
+    "#,
+        )
+        .unwrap();
+    assert_eq!(
+        script.shared.borrow().changed_options,
+        ["slideshow_interval"]
+    );
+}
+
+#[test]
 fn slideshow_uses_the_saved_interval_and_keeps_explicit_overrides() {
     let script = Script::new().unwrap();
     script

@@ -1059,15 +1059,40 @@ end
 W.extra_settings_tabs = {}
 function W.add_settings_tab(title, rows) table.insert(W.extra_settings_tabs, { title, rows }) end
 
-function W.default_settings_tabs()
+local function slideshow_interval_row(id)
+  local st = W.style
+  local invalid
+  local field = {
+    id = id, width = 92, padding = { 6, 10 }, radius = st.button_radius,
+    background = wlens.color(st.fg, 0.07), border = { width = 1, color = st.panel_border },
+    input = {
+      value = function() return (tostring(wlens.opt.slideshow_interval):gsub("%.0$", "")) end,
+      on_submit = function(text)
+        if text ~= "" and tonumber(text) ~= wlens.opt.slideshow_interval then
+          if not pcall(wlens.set, "slideshow_interval", text) then
+            invalid = text
+            return
+          end
+        end
+        invalid = nil
+        wlens.exec("ui blur " .. id)
+      end,
+    },
+  }
+  return W.setting("Slideshow interval", field, function()
+    if invalid and wlens.input(id) == invalid then return "Enter a positive number of seconds" end
+    return "Seconds per image · Enter to apply"
+  end)
+end
+
+function W.default_settings_tabs(settings_id)
   local tabs = {
   { "View", {
     W.setting("Fit", W.choice("fit", { { "Shrink", "shrink" }, { "Contain", "contain" }, { "Cover", "cover" }, { "Width", "width" } }),
               "How images fit the window"),
     W.setting("Smooth scaling", W.toggle("filter", { on = "linear", off = "nearest" }), "Off: crisp pixels when zoomed in"),
     W.setting("Checkerboard", W.toggle("image.checker"), "Behind transparent images"),
-    W.setting("Slideshow interval", W.range("slideshow_interval", 1, 60, { step = 1 }),
-              function() return string.format("%g s per image", wlens.opt.slideshow_interval) end),
+    slideshow_interval_row((settings_id or "settings") .. "_slideshow_interval"),
     W.setting("Wrap around", W.toggle("wrap"), "Go from the last image to the first"),
     W.setting("Small images", W.choice("pan", { { "Centred", "center" }, { "Movable", "bounded" }, { "Free", "free" } })),
     W.setting("Transition", W.choice("transition.kind", { { "None", "none" }, { "Fade", "fade" }, { "Slide", "slide" }, { "Zoom", "zoom" } })),
@@ -1090,7 +1115,7 @@ end
 function W.settings(o)
   o = o or {}
   local st = W.style
-  local tabs = o.tabs or W.default_settings_tabs()
+  local tabs = o.tabs or W.default_settings_tabs(o.id)
   local current = 1
   local tabbar = { dir = "row", gap = 4, width = "100%" }
   local pages = { dir = "column", width = "100%", align = "start" }

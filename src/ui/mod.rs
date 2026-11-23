@@ -80,6 +80,8 @@ pub struct Slider {
 }
 
 pub struct InputSpec {
+    /// A committed value displayed until the user types a replacement.
+    pub value: Option<Function>,
     pub placeholder: String,
     /// Enter: a command template (`{value}`) or a Lua function(value).
     pub on_submit: Option<SliderAction>,

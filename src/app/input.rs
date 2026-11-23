@@ -25,6 +25,21 @@ impl App {
         self.drain_queue(event_loop);
     }
 
+    pub(super) fn set_input_focus(&mut self, next: Option<String>) {
+        if self.focus == next {
+            return;
+        }
+        if let Some(id) = self.focus.take()
+            && self.ui.nodes.iter().any(|n| {
+                n.id.as_ref() == Some(&id)
+                    && n.input.as_ref().is_some_and(|spec| spec.value.is_some())
+            })
+        {
+            self.script.shared.borrow_mut().inputs.remove(&id);
+        }
+        self.focus = next;
+    }
+
     /// Keys while a text input has focus. Returns whether the key was used
     /// (all of them are, so typing never triggers bindings).
     pub(super) fn input_key(
@@ -37,7 +52,7 @@ impl App {
             return false;
         };
         if !self.ui.input_visible(&id) {
-            self.focus = None;
+            self.set_input_focus(None);
             return false;
         }
         let ctrl = self.mods.control_key();
@@ -52,7 +67,7 @@ impl App {
         let before = value.clone();
         match &ev.logical_key {
             Key::Named(NamedKey::Escape) => {
-                self.focus = None;
+                self.set_input_focus(None);
             }
             Key::Named(NamedKey::Enter) => {
                 if let Some((Some(a), _)) = self.ui.input_actions(&id) {
@@ -127,12 +142,13 @@ impl App {
         if let Some(i) = hit.clickable
             && self.ui.nodes[i].input.is_some()
         {
-            self.focus = self.ui.nodes[i].id.clone();
+            self.set_input_focus(self.ui.nodes[i].id.clone());
             self.text_dirty = true;
             self.redraw();
             return;
         }
-        if self.focus.take().is_some() {
+        if self.focus.is_some() {
+            self.set_input_focus(None);
             // Clicking anywhere else leaves the text field.
             self.text_dirty = true;
             self.redraw();
