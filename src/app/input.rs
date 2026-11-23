@@ -3,6 +3,41 @@
 use super::*;
 
 impl App {
+    /// Set the cursor for the current gesture or hover target and return the hovered thumbnail.
+    pub(super) fn update_cursor(&self) -> Option<usize> {
+        let at = self.cursor?;
+        let point = (at.x, at.y);
+        let hit = self.ui.hit(point);
+        let thumb = if self.gallery.active && !hit.over_ui {
+            self.grid()
+                .index_at(point, self.gallery.shown, self.items.len())
+        } else {
+            None
+        };
+        let drag = self.press.as_ref().filter(|p| p.dragged && !p.on_ui);
+        let icon = match drag.map(|p| p.button) {
+            Some(MouseButton::Middle) if !self.gallery.active => CursorIcon::Crosshair,
+            Some(_) => CursorIcon::Grabbing,
+            None if hit.pointer || thumb.is_some() => CursorIcon::Pointer,
+            None => CursorIcon::Default,
+        };
+        if let Some(window) = &self.window {
+            window.set_cursor(icon);
+        }
+        thumb
+    }
+
+    pub(super) fn pan_to_pointer(&mut self, at: PhysicalPosition<f64>) {
+        self.sync_pan_mode();
+        if let Some(layer) = &mut self.current {
+            self.target
+                .pan_to_pointer((at.x, at.y), layer.size, self.viewport);
+            layer.view = self.target;
+            self.update_info();
+            self.redraw();
+        }
+    }
+
     /// Run a slider/input action with a value: a command template
     /// (`{value}`, `{pct}`) or a Lua function.
     pub(super) fn run_value_action(
