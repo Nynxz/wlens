@@ -59,6 +59,35 @@ fn bar_layout() {
 }
 
 #[test]
+fn simple_theme_keeps_the_bar_flush_with_the_window_during_resize() {
+    let script = crate::lua::Script::new().unwrap();
+    let tree = script
+        .lua
+        .load(r#"wlens.use("simple", {bar_height = 32}); return wlens._ui_spec"#)
+        .eval()
+        .unwrap();
+    let mut ui = Ui::parse(tree).unwrap();
+    ui.refresh(&str::to_owned, &LuaValue::Nil);
+    let bar = ui
+        .nodes
+        .iter()
+        .position(|n| n.id.as_deref() == Some("bar"))
+        .unwrap();
+    let theme = Theme::default();
+    for scale in [1.0, 1.5, 2.0] {
+        for height in (240..300).chain((240..300).rev()) {
+            let win = Rect::new(0.0, 0.0, 870.0, f64::from(height));
+            ui.layout(win, scale, &theme, &mut Fixed);
+            let rect = ui.nodes[bar].rect;
+            assert_eq!(rect.h, 32.0 * f64::from(scale));
+            assert_eq!(rect.y + rect.h, win.h);
+            let view = ui.view_rect("main").unwrap();
+            assert_eq!(view.y + view.h, rect.y);
+        }
+    }
+}
+
+#[test]
 fn back_button_keeps_its_slot_across_image_and_grid_views() {
     let script = crate::lua::Script::new().unwrap();
     let tree = script

@@ -27,6 +27,7 @@ pollster = "1.0.3"
 serde_json = "1.0.154"
 ureq = { version = "3.5.2", features = ["socks-proxy"] }
 url = "2.5.9"
+wayland-client = { version = "0.31.15", features = ["system", "dlopen"] }
 wgpu = { version = "30.0.2", default-features = false, features = ["std", "parking_lot", "vulkan", "gles", "wgsl"] }
 # Wayland only: no X11 backend, so we never silently fall back to XWayland.
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen", "wayland-csd-adwaita"] }

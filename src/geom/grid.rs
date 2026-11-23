@@ -61,7 +61,8 @@ impl Grid {
             pad,
             inset_top: 0.0,
             inset_bottom: 0.0,
-            left: vp.x + (vp.w - used) / 2.0,
+            // Move all columns by whole physical pixels as the window changes width.
+            left: (vp.x + (vp.w - used) / 2.0).round(),
         }
     }
 
@@ -141,6 +142,29 @@ impl Grid {
         after.y + fraction * after.h - screen_y
     }
 
+    /// Keep the top row at the same height when a window resize changes the
+    /// column count. Remember its tile so dragging back across a breakpoint
+    /// restores the original row even when the row starts no longer line up.
+    pub fn reflow_scroll(
+        &self,
+        resized: &Self,
+        count: usize,
+        scroll: f64,
+        anchor: &mut Option<usize>,
+    ) -> f64 {
+        if self.cols == resized.cols || scroll <= 0.0 || count == 0 {
+            return scroll;
+        }
+        let first = self.visible(count, scroll, 0).start.min(count - 1);
+        let row = first / self.cols;
+        let tile = anchor
+            .filter(|&i| i < count && i / self.cols == row)
+            .unwrap_or(first);
+        *anchor = Some(tile);
+        let old_y = self.rect(tile, scroll).y - self.vp.y;
+        resized.rect(tile, 0.0).y - resized.vp.y - old_y
+    }
+
     /// The scroll offset that brings item `i` fully into view with the least movement.
     pub fn scroll_to_show(&self, i: usize, scroll: f64, n: usize) -> f64 {
         let r = self.cell_rect(i, 0.0);
@@ -178,6 +202,35 @@ mod tests {
         assert_eq!(g.rect(0, 0.0), Rect::new(15.0, 10.0, 100.0, 100.0));
         assert_eq!(g.rect(5, 0.0), Rect::new(125.0, 120.0, 100.0, 100.0));
         assert_eq!(g.rect(5, 50.0).y, 70.0);
+    }
+
+    #[test]
+    fn resize_translates_tiles_by_whole_pixels() {
+        let make = |w, h| Grid::new(Rect::new(0.0, 0.0, w, h), 100.25, 10.5, 10.0, 0.0);
+        let initial = make(460.0, 300.0).rect(5, 17.25);
+        for w in [459.0, 461.0, 462.0] {
+            let resized = make(w, 299.0).rect(5, 17.25);
+            assert_eq!((initial.x - resized.x).fract(), 0.0);
+            assert_eq!(
+                (resized.y, resized.w, resized.h),
+                (initial.y, initial.w, initial.h)
+            );
+        }
+    }
+
+    #[test]
+    fn window_reflow_preserves_the_viewed_row_in_both_directions() {
+        let old = grid();
+        let wide = Grid::new(Rect::new(0.0, 0.0, 580.0, 301.0), 100.0, 10.0, 10.0, 0.0);
+        let scroll = 1240.5;
+        let mut anchor = None;
+        let next = old.reflow_scroll(&wide, 200, scroll, &mut anchor);
+        let tile = old.visible(200, scroll, 0).start;
+        assert_eq!(old.rect(tile, scroll).y, wide.rect(tile, next).y);
+        assert_eq!(wide.reflow_scroll(&old, 200, next, &mut anchor), scroll);
+        assert_eq!(old.reflow_scroll(&wide, 200, 0.0, &mut anchor), 0.0);
+        assert_eq!(old.reflow_scroll(&old, 200, scroll, &mut anchor), scroll);
+        assert_eq!(old.reflow_scroll(&wide, 0, 0.0, &mut anchor), 0.0);
     }
 
     #[test]

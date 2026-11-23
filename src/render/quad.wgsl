@@ -8,6 +8,7 @@ struct Globals {
     screen: vec4<f32>,
     checker_a: vec4<f32>,
     checker_b: vec4<f32>,
+    window_per_texel: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
@@ -83,10 +84,11 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     let bw = in.params.y;
     let blur = in.params.z;
     let opacity = in.params.w;
+    let screen_pos = in.pos.xy * g.window_per_texel.xy;
 
     // Scrolling areas clip what's inside them.
     if (in.clip.z > 0.0) {
-        let p = in.pos.xy;
+        let p = screen_pos;
         if (p.x < in.clip.x || p.y < in.clip.y || p.x > in.clip.x + in.clip.z || p.y > in.clip.y + in.clip.w) {
             discard;
         }
@@ -130,12 +132,14 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     if (in.flags.x > 0.5) {
         // The screen-to-UV rows give the exact gradients in physical pixels.
         // Explicit gradients let us sample only the fragments that use an image.
-        let s = vec3<f32>(in.pos.xy, 1.0);
+        let s = vec3<f32>(screen_pos, 1.0);
         let uv = vec2<f32>(dot(in.uv0.xyz, s), dot(in.uv1.xyz, s));
-        let texel = textureSampleGrad(tex, samp, uv, vec2(in.uv0.x, in.uv1.x), vec2(in.uv0.y, in.uv1.y));
+        let dx = vec2(in.uv0.x, in.uv1.x) * g.window_per_texel.x;
+        let dy = vec2(in.uv0.y, in.uv1.y) * g.window_per_texel.y;
+        let texel = textureSampleGrad(tex, samp, uv, dx, dy);
         var under = c;
         if (in.flags.y > 0.5) {
-            let cell = floor(in.pos.xy / g.screen.z);
+            let cell = floor(screen_pos / g.screen.z);
             let odd = (i32(cell.x) + i32(cell.y)) & 1;
             under = premul(select(g.checker_a, g.checker_b, odd == 1));
         }

@@ -151,6 +151,15 @@ impl App {
     }
 
     pub(super) fn refresh_ui(&mut self) {
+        if let Some(r) = &self.renderer {
+            let (w, h) = r.size();
+            let logical = (w as f64 / self.scale as f64, h as f64 / self.scale as f64);
+            let mut sh = self.script.shared.borrow_mut();
+            if sh.window != logical {
+                sh.window = logical;
+                self.text_dirty = true;
+            }
+        }
         if self.text_dirty {
             self.text_dirty = false;
             let script = &self.script;
@@ -203,13 +212,6 @@ impl App {
         self.refresh_ui();
         let Some(r) = &mut self.renderer else { return };
         let win = Rect::new(0.0, 0.0, r.size().0 as f64, r.size().1 as f64);
-        let logical = (win.w / self.scale as f64, win.h / self.scale as f64);
-        if self.script.shared.borrow().window != logical {
-            // Lua layouts may depend on the window size (e.g. help columns).
-            self.script.shared.borrow_mut().window = logical;
-            self.text_dirty = true;
-            return self.layout_ui();
-        }
         let theme = self.script.shared.borrow().settings.theme.clone();
         self.ui.layout(win, self.scale, &theme, &mut r.text);
         // The image/grid area: the `view = "main"` element if the UI has one,
@@ -232,7 +234,6 @@ impl App {
         );
         if insets != self.grid_insets {
             self.grid_insets = insets;
-            self.gallery.requested = None;
         }
         self.scene_clip = self.ui.view_rect("main").map(|_| vp);
         let sc = self.scale as f64;
@@ -245,7 +246,6 @@ impl App {
         }
         if vp != self.viewport {
             self.viewport = vp;
-            self.gallery.requested = None;
             self.refit_or_clamp();
         }
     }

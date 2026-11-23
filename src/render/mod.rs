@@ -3,15 +3,18 @@
 //! the app turns those into quads. Renders only when asked.
 
 mod text;
+mod wayland;
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, anyhow};
+use wayland_client::protocol::wl_output::Transform;
 use winit::window::Window;
 
 use crate::geom::view::Rect;
-use crate::model::settings::Filter;
+use crate::model::settings::{Filter, FitMode};
 use crate::model::theme::{Border, Color, Shadow};
 use crate::ui::Align;
 
@@ -154,6 +157,10 @@ pub struct Frame {
     pub top_texts: Vec<TextDraw>,
     /// Clip the scene (image, grid) to this rectangle; the UI is never clipped.
     pub scene_clip: Option<Rect>,
+    /// Active sizing of the displayed image. A manual zoom uses `FitMode::None`.
+    pub image_fit: Option<FitMode>,
+    /// Edge to preserve while the compositor waits for a resized buffer.
+    pub bottom_anchored: bool,
 }
 
 #[repr(C)]
@@ -162,6 +169,7 @@ struct Globals {
     screen: [f32; 4],
     checker_a: [f32; 4],
     checker_b: [f32; 4],
+    window_per_texel: [f32; 4],
 }
 
 pub struct Renderer {
@@ -169,6 +177,14 @@ pub struct Renderer {
     /// Kept to rebuild the surface when it gets stuck (see `render`).
     instance: wgpu::Instance,
     window: Arc<Window>,
+    native_surface: Option<wayland::WindowSurface>,
+    bottom_up_pipeline: Option<wgpu::RenderPipeline>,
+    resize_target: Option<wayland::ResizeTarget>,
+    window_size: (u32, u32),
+    resize_deadline: Option<Instant>,
+    resize_includes_height: bool,
+    presented_transform: Transform,
+    presented_scale: u32,
     /// Frames in a row the surface couldn't take.
     failures: u32,
     device: wgpu::Device,
@@ -359,30 +375,50 @@ impl Renderer {
             bind_group_layouts: &[Some(&mip_layout)],
             immediate_size: 0,
         });
-        let mip_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("mip"),
-            layout: Some(&mip_pl),
-            vertex: wgpu::VertexState {
-                module: &mip_shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &mip_shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: IMAGE_FORMAT,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
+        let make_blit = |label: &str, layout: &wgpu::PipelineLayout, fragment: &str, format| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(layout),
+                vertex: wgpu::VertexState {
+                    module: &mip_shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &mip_shader,
+                    entry_point: Some(fragment),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+
+        let mip_pipeline = make_blit("mip", &mip_pl, "fs_main", IMAGE_FORMAT);
+        let native_surface = (info.backend == wgpu::Backend::Vulkan)
+            .then(|| wayland::WindowSurface::new(window.clone()))
+            .flatten();
+        let bottom_up_pipeline = native_surface.as_ref().map(|_| {
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("bottom-up presentation"),
+                bind_group_layouts: &[Some(&mip_layout), Some(&globals_layout)],
+                immediate_size: 0,
+            });
+            make_blit(
+                "bottom-up presentation",
+                &layout,
+                "fs_bottom_up",
+                config.format,
+            )
         });
 
         let sampler = |mag| {
@@ -425,6 +461,14 @@ impl Renderer {
         Ok(Self {
             surface,
             instance: instance.clone(),
+            native_surface,
+            bottom_up_pipeline,
+            resize_target: None,
+            window_size: (config.width, config.height),
+            resize_deadline: None,
+            resize_includes_height: false,
+            presented_transform: Transform::Normal,
+            presented_scale: 1,
             window,
             failures: 0,
             device,
@@ -456,7 +500,15 @@ impl Renderer {
     }
 
     pub fn size(&self) -> (u32, u32) {
-        (self.config.width, self.config.height)
+        self.window_size
+    }
+
+    pub fn resize_deadline(&self) -> Option<Instant> {
+        self.resize_deadline
+    }
+
+    pub fn finish_resize_if_due(&mut self, now: Instant) -> bool {
+        self.resize_deadline.take_if(|end| *end <= now).is_some()
     }
 
     /// Whether the last frame(s) couldn't be drawn.
@@ -481,13 +533,21 @@ impl Renderer {
     }
 
     /// `size` must be the window's *physical* inner size.
-    pub fn resize(&mut self, size: (u32, u32)) {
-        if size.0 == 0 || size.1 == 0 {
-            return;
+    pub fn resize(&mut self, size: (u32, u32)) -> bool {
+        if size.0 == 0 || size.1 == 0 || size == self.size() {
+            return false;
         }
-        self.config.width = size.0;
-        self.config.height = size.1;
-        self.surface.configure(&self.device, &self.config);
+        // winit reports size changes without an end-of-resize event. Keep the
+        // same presentation between nearby configures, then redraw directly.
+        if self.native_surface.is_some() {
+            let now = Instant::now();
+            let continuing = self.resize_deadline.is_some_and(|end| now < end);
+            self.resize_includes_height =
+                size.1 != self.window_size.1 || (continuing && self.resize_includes_height);
+            self.resize_deadline = Some(now + Duration::from_millis(80));
+        }
+        self.window_size = size;
+        true
     }
 
     fn upload_pixels(&self, rgba: &[u8], size: (u32, u32)) -> wgpu::Texture {
@@ -684,6 +744,38 @@ impl Renderer {
     /// Draw `frame`. False if the surface had no image to draw into (the
     /// caller should try again a little later).
     pub fn render(&mut self, frame: &Frame) -> bool {
+        let (w, h) = self.window_size;
+        let resizing_bar = self.resize_deadline.is_some() && frame.bottom_anchored;
+        // The first grid row follows the top, while the toolbar follows the
+        // bottom. On a height drag let the fractional viewport fit both edges.
+        // A side drag can keep the thumbnail pixels at their native size.
+        let fit_edges = match frame.image_fit {
+            None => self.resize_includes_height,
+            Some(fit) => matches!(fit, FitMode::Width | FitMode::Height),
+        };
+        let buffer_scale = if resizing_bar && fit_edges {
+            wayland::resize_buffer_scale(
+                self.window_size,
+                self.window.scale_factor(),
+                self.max_texture_dim(),
+            )
+        } else {
+            1
+        };
+        let bottom_up = resizing_bar && buffer_scale == 1;
+        let transform = if bottom_up {
+            Transform::Flipped180
+        } else {
+            Transform::Normal
+        };
+        let draw_size = (
+            w.next_multiple_of(buffer_scale),
+            h.next_multiple_of(buffer_scale),
+        );
+        if draw_size != (self.config.width, self.config.height) {
+            (self.config.width, self.config.height) = draw_size;
+            self.surface.configure(&self.device, &self.config);
+        }
         let surface_tex = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(f)
             | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
@@ -705,11 +797,16 @@ impl Renderer {
         };
         self.failures = 0;
 
-        let (w, h) = self.size();
         let g = Globals {
             screen: [w as f32, h as f32, frame.checker.2.max(1.0), 0.0],
             checker_a: frame.checker.0.linear(),
             checker_b: frame.checker.1.linear(),
+            window_per_texel: [
+                w as f32 / draw_size.0 as f32,
+                h as f32 / draw_size.1 as f32,
+                0.0,
+                0.0,
+            ],
         };
         self.queue
             .write_buffer(&self.globals, 0, bytemuck::bytes_of(&g));
@@ -749,14 +846,27 @@ impl Renderer {
             self.ensure_tex_bind_group(*tex, frame.filter);
         }
 
-        self.text
-            .prepare(0, &self.device, &self.queue, (w, h), &frame.texts);
-        self.text
-            .prepare(1, &self.device, &self.queue, (w, h), &frame.ui_texts);
-        self.text
-            .prepare(2, &self.device, &self.queue, (w, h), &frame.top_texts);
+        for (layer, draws) in [&frame.texts, &frame.ui_texts, &frame.top_texts]
+            .into_iter()
+            .enumerate()
+        {
+            self.text
+                .prepare(layer, &self.device, &self.queue, (w, h), draws);
+        }
 
         let target = surface_tex.texture.create_view(&Default::default());
+        if bottom_up && !self.resize_target.as_ref().is_some_and(|t| t.fits(w, h)) {
+            self.resize_target = Some(wayland::ResizeTarget::new(
+                &self.device,
+                self.config.format,
+                (w, h),
+                &self.mip_layout,
+                &self.sampler_nearest,
+            ));
+        } else if !bottom_up {
+            self.resize_target = None;
+        }
+        let intermediate = self.resize_target.as_ref();
         {
             // Window background, premultiplied (alpha only matters if transparent).
             let [r, g, b, a] = frame.clear.linear();
@@ -767,23 +877,29 @@ impl Renderer {
                 b: (b * a) as f64,
                 a: a as f64,
             };
-            let mut pass = begin_pass(&mut enc, &target, clear);
+            let mut pass = begin_pass(&mut enc, intermediate.map_or(&target, |t| &t.view), clear);
+            if intermediate.is_some() {
+                pass.set_viewport(0.0, 0.0, w as f32, h as f32, 0.0, 1.0);
+                pass.set_scissor_rect(0, 0, w, h);
+            }
             pass.set_pipeline(&self.quad_pipeline);
             pass.set_bind_group(0, &self.globals_bg, &[]);
             pass.set_vertex_buffer(0, self.instances.slice(..));
             // Scene quads, scene text, then UI quads and UI text on top.
             let (split, top) = (frame.ui_start as u32, frame.top_start as u32);
             let clip = frame.scene_clip.and_then(|r| {
-                let x0 = r.x.max(0.0).floor() as u32;
-                let y0 = r.y.max(0.0).floor() as u32;
-                let x1 = ((r.x + r.w).ceil() as u32).min(w);
-                let y1 = ((r.y + r.h).ceil() as u32).min(h);
-                (x1 > x0 && y1 > y0).then_some((x0, y0, x1 - x0, y1 - y0))
+                let sx = f64::from(draw_size.0) / f64::from(w);
+                let sy = f64::from(draw_size.1) / f64::from(h);
+                let x0 = (r.x * sx).floor() as u32;
+                let y0 = (r.y * sy).floor() as u32;
+                let x1 = (((r.x + r.w) * sx).ceil() as u32).min(draw_size.0);
+                let y1 = (((r.y + r.h) * sy).ceil() as u32).min(draw_size.1);
+                (x1 > x0 && y1 > y0).then(|| (x0, y0, x1 - x0, y1 - y0))
             });
             for layer in 0..3 {
                 match (layer, clip) {
                     (0, Some((x, y, cw, ch))) => pass.set_scissor_rect(x, y, cw, ch),
-                    (1, Some(_)) => pass.set_scissor_rect(0, 0, w, h),
+                    (1, Some(_)) => pass.set_scissor_rect(0, 0, draw_size.0, draw_size.1),
                     (2, _) => {}
                     _ => {}
                 }
@@ -811,11 +927,30 @@ impl Renderer {
                 self.text.render(layer, &mut pass);
             }
         }
+        if let (Some(t), Some(pipeline)) = (intermediate, &self.bottom_up_pipeline) {
+            let mut pass = begin_pass(&mut enc, &target, wgpu::Color::TRANSPARENT);
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, &t.bind_group, &[]);
+            pass.set_bind_group(1, &self.globals_bg, &[]);
+            pass.draw(0..3, 0..1);
+        }
         self.queue.submit([enc.finish()]);
         // Let Wayland coalesce redraws until the compositor can display another
         // frame. Keep the explicit immediate-mode override available for debugging.
         if self.config.present_mode != wgpu::PresentMode::Immediate {
             self.window.pre_present_notify();
+        }
+        if transform != self.presented_transform
+            && let Some(surface) = &self.native_surface
+        {
+            surface.set_transform(transform);
+            self.presented_transform = transform;
+        }
+        if buffer_scale != self.presented_scale
+            && let Some(surface) = &self.native_surface
+        {
+            surface.set_scale(buffer_scale);
+            self.presented_scale = buffer_scale;
         }
         self.queue.present(surface_tex);
         self.text.end_frame();
