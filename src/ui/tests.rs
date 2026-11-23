@@ -639,6 +639,41 @@ fn settings_frame(ui: &mut Ui, dt: f32) {
     settings_frame_at(ui, dt, 900.0, 700.0, 1.0);
 }
 
+#[test]
+fn overlay_owns_hover_and_wheel_even_without_scrollable_content() {
+    let mut ui = build(
+        r##"return {
+        {id="under", anchor="top-left", dir="column", width=120, height=100, scroll=true, tooltip="behind", hover={background="#fff"},
+         {width=100,height=70}, {width=100,height=70}, {width=100,height=70}},
+        {id="settings", layer="top", show="never", width="100%", height="100%", on_click="back",
+         {id="panel", width=60, height=60, background="#222"}}
+    }"##,
+    );
+    let under = ui
+        .nodes
+        .iter()
+        .position(|n| n.id.as_deref() == Some("under"))
+        .unwrap();
+    ui.set_forced("settings", "show").unwrap();
+    let point = (5.0, 5.0);
+    // Also covers the first event before the opening overlay has been painted.
+    assert!(ui.hit(point).over_ui);
+    assert!(ui.scroll_at(point, ScrollInput::Pixels(-20.0)));
+    settings_frame(&mut ui, 1.0);
+    ui.animate(1.0, &Theme::default(), Some(point), true);
+    assert_eq!(ui.nodes[under].hover_t, 0.0);
+    assert!(ui.tip.is_none());
+    for p in [point, (850.0, 650.0)] {
+        assert!(ui.scroll_at(p, ScrollInput::Wheel(-40.0)));
+        assert!(ui.hit(p).blocks_drag);
+    }
+    assert_eq!(ui.nodes[under].scroll_y.target, 0.0);
+    ui.set_forced("settings", "hide").unwrap();
+    settings_frame(&mut ui, 1.0);
+    assert!(ui.scroll_at(point, ScrollInput::Wheel(-40.0)));
+    assert!(ui.nodes[under].scroll_y.target > 0.0);
+}
+
 fn settings_frame_at(ui: &mut Ui, dt: f32, width: f64, height: f64, scale: f32) {
     let theme = Theme::default();
     ui.refresh(&str::to_owned, &LuaValue::Nil);
@@ -849,4 +884,6 @@ fn short_menu_scrolls_to_last_clickable_command() {
     let point = ui.nodes[last].rect.center();
     assert!(win.contains(point));
     assert_eq!(ui.hit(point).clickable, Some(last));
+    assert!(ui.hit(point).pointer);
+    assert!(!ui.hit((1.0, 1.0)).pointer);
 }

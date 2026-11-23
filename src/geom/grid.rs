@@ -5,30 +5,6 @@ use std::ops::Range;
 
 use crate::geom::view::Rect;
 
-pub enum ScrollInput {
-    Wheel(f64),
-    Pixels(f64),
-}
-
-impl ScrollInput {
-    /// Physical pixels, positive towards the start of the list.
-    pub fn apply(self, shown: &mut f64, target: &mut f64, max: f64) {
-        match self {
-            ScrollInput::Wheel(dy) => {
-                // Reverse from the visible position, without finishing a queued wheel flick.
-                if (*target - *shown) * dy > 0.0 {
-                    *target = *shown;
-                }
-                *target = (*target - dy).clamp(0.0, max);
-            }
-            ScrollInput::Pixels(dy) => {
-                *shown = (*shown - dy).clamp(0.0, max);
-                *target = *shown;
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Grid {
     pub vp: Rect,

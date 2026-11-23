@@ -136,7 +136,7 @@ impl App {
         }
     }
 
-    pub(super) fn scroll_gallery(&mut self, grid: Grid, input: ScrollInput) {
+    pub(super) fn scroll_gallery(&mut self, grid: Grid, input: ui::ScrollInput) {
         let max = grid.max_scroll(self.grid_len(&grid));
         let g = &mut self.gallery;
         g.resize_anchor = None;
@@ -300,7 +300,11 @@ impl App {
             width: 0.0,
             color: Color::TRANSPARENT,
         };
-        let hovered = self.cursor.and_then(|c| g.index_at((c.x, c.y), scroll, n));
+        let hovered = self
+            .cursor
+            .map(|c| (c.x, c.y))
+            .filter(|&p| !self.ui.hit(p).over_ui)
+            .and_then(|p| g.index_at(p, scroll, n));
         // Grow in slightly as it fades in.
         let zoom = lerp(0.97, 1.0, op) as f64;
         let c = g.vp.center();
@@ -336,6 +340,7 @@ impl App {
                 size: th.font_size * scale,
                 rect: Rect::new(g.vp.x, cy + 6.0 * scale as f64, g.vp.w, 24.0 * scale as f64),
                 align: Align::Center,
+                center_ink: false,
                 color: c.with_alpha(c.0[3] * op * 0.8),
                 clip: None,
             });
@@ -352,6 +357,7 @@ impl App {
                     size: th.font_size * scale,
                     rect: Rect::new(g.vp.x, r.y, g.vp.w, r.h.min(80.0 * scale as f64)),
                     align: Align::Center,
+                    center_ink: false,
                     color: c.with_alpha(c.0[3] * op * 0.8),
                     clip: None,
                 });
@@ -395,6 +401,7 @@ impl App {
                     size: (r.h * 0.32) as f32,
                     rect: r,
                     align: Align::Center,
+                    center_ink: false,
                     color: c.with_alpha(c.0[3] * op * 0.8),
                     clip: None,
                 });
@@ -443,6 +450,7 @@ impl App {
                     size: (side * 0.68) as f32,
                     rect: badge,
                     align: Align::Center,
+                    center_ink: false,
                     color: crate::model::theme::Color([1.0, 1.0, 1.0, op]),
                     clip: None,
                 });
@@ -479,6 +487,7 @@ impl App {
                     size: 11.0 * scale,
                     rect: badge,
                     align: Align::Center,
+                    center_ink: false,
                     color: Color([1.0, 1.0, 1.0, op]),
                     clip: None,
                 });
@@ -516,6 +525,7 @@ impl App {
                     size,
                     rect: Rect::new(r.x, r.y + r.h, r.w, g.label * zoom),
                     align: Align::Center,
+                    center_ink: false,
                     color: c.with_alpha(c.0[3] * op),
                     clip: None,
                 });

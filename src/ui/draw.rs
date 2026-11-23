@@ -66,6 +66,7 @@ impl Ui {
                 size: theme.tooltip_size * scale,
                 rect: r,
                 align: Align::Center,
+                center_ink: false,
                 color: c.with_alpha(c.0[3] * op),
                 clip: None,
             });
@@ -278,6 +279,9 @@ impl Ui {
                 family: n.family(theme),
                 size: n.font_size.unwrap_or(theme.font_size) * scale,
                 rect: inner,
+                center_ink: n.on_click.is_some()
+                    && n.input.is_none()
+                    && n.text_align == Align::Center,
                 align: if n.input.is_some() {
                     Align::Start
                 } else {

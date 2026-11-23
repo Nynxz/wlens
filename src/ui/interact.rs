@@ -56,19 +56,25 @@ impl Ui {
         }
     }
 
-    /// Open overlays: top-layer elements that close on a click (menus,
-    /// help, dialogs), shown by `ui show`.
-    pub fn open_overlays(&self) -> Vec<usize> {
-        (0..self.nodes.len())
-            .filter(|&i| {
-                let n = &self.nodes[i];
-                n.layer_top
-                    && n.on_click.is_some()
-                    && n.id
-                        .as_ref()
-                        .is_some_and(|id| self.forced.get(id) == Some(&true))
-            })
-            .collect()
+    /// While a dismissible overlay is open, its panel and backdrop own pointer input.
+    pub fn open_overlay(&self) -> Option<usize> {
+        if !self.forced.values().any(|&shown| shown) {
+            return None;
+        }
+        self.paint_order().into_iter().rev().find(|&i| {
+            let n = &self.nodes[i];
+            n.layer_top
+                && n.on_click.is_some()
+                && n.id
+                    .as_ref()
+                    .is_some_and(|id| self.forced.get(id) == Some(&true))
+        })
+    }
+
+    fn in_overlay(&self, i: usize, overlay: Option<usize>) -> bool {
+        overlay.is_none_or(|root| {
+            std::iter::successors(Some(i), |&n| self.nodes[n].parent).any(|n| n == root)
+        })
     }
 
     /// Whether `p` is on an overlay's content (its panel), not its backdrop.
@@ -110,7 +116,8 @@ impl Ui {
         mouse_active: bool,
     ) -> bool {
         let mut moving = false;
-        self.menu_open = !self.open_overlays().is_empty();
+        let overlay = self.open_overlay();
+        self.menu_open = overlay.is_some();
         // A visible spinner keeps frames coming (only while it's shown).
         moving |= self
             .nodes
@@ -120,7 +127,8 @@ impl Ui {
         let mut hovered_nodes = vec![false; self.nodes.len()];
         for i in 0..self.nodes.len() {
             let n = &self.nodes[i];
-            let hovered = (cursor.is_some_and(|c| n.rect.contains(c)) && n.opacity > 0.01)
+            let hovered = (self.in_overlay(i, overlay)
+                && cursor.is_some_and(|c| self.under(i, c, 0.01)))
                 || (n.follow_hover && n.parent.is_some_and(|p| hovered_nodes[p]));
             hovered_nodes[i] = hovered;
             let target_vis = self.target_vis(n, mouse_active, hovered);
@@ -151,10 +159,11 @@ impl Ui {
 
         // Tooltip: the topmost hovered element that has one, after a delay.
         let tipped = cursor.and_then(|c| {
-            self.paint_order()
-                .into_iter()
-                .rev()
-                .find(|&i| self.under(i, c, 0.05) && !self.nodes[i].tooltip_value.is_empty())
+            self.paint_order().into_iter().rev().find(|&i| {
+                self.in_overlay(i, overlay)
+                    && self.under(i, c, 0.05)
+                    && !self.nodes[i].tooltip_value.is_empty()
+            })
         });
         if tipped != self.tip.map(|t| t.0) {
             self.tip = tipped.map(|i| (i, Instant::now()));
@@ -256,26 +265,20 @@ impl Ui {
     /// Scroll the scrollable element under `p` by the supplied pixels (positive = up /
     /// towards the start). Returns whether one took it.
     pub fn scroll_at(&mut self, p: (f64, f64), input: ScrollInput) -> bool {
+        let overlay = self.open_overlay();
         let hit = self.paint_order().into_iter().rev().find(|&i| {
             let n = &self.nodes[i];
-            n.scroll && self.under(i, p, 0.05) && n.max_scroll_y > 0.0
+            n.scroll
+                && self.in_overlay(i, overlay)
+                && self.under(i, p, 0.05)
+                && n.max_scroll_y > 0.0
         });
-        let Some(i) = hit else { return false };
+        let Some(i) = hit else {
+            return overlay.is_some();
+        };
         let n = &mut self.nodes[i];
         let offset = &mut n.scroll_y;
-        match input {
-            ScrollInput::Wheel(dy) => {
-                // Reverse from the visible position, without finishing a queued wheel flick.
-                if (offset.target - offset.shown) * dy > 0.0 {
-                    offset.target = offset.shown;
-                }
-                offset.target = (offset.target - dy).clamp(0.0, n.max_scroll_y);
-            }
-            ScrollInput::Pixels(dy) => {
-                offset.shown = (offset.shown - dy).clamp(0.0, n.max_scroll_y);
-                offset.target = offset.shown;
-            }
-        }
+        input.apply(&mut offset.shown, &mut offset.target, n.max_scroll_y);
         true
     }
 
@@ -290,9 +293,11 @@ impl Ui {
     }
 
     pub fn hit(&self, p: (f64, f64)) -> Hit {
+        let overlay = self.open_overlay();
         let top = self.paint_order().into_iter().rev().find(|&i| {
             let n = &self.nodes[i];
-            self.under(i, p, 0.049)
+            self.in_overlay(i, overlay)
+                && self.under(i, p, 0.049)
                 && !n.pass_through
                 && (n.style.background.0[3] > 0.0
                     || n.on_click.is_some()
@@ -338,8 +343,8 @@ impl Ui {
         });
         Hit {
             clickable,
-            over_ui: top.is_some(),
-            blocks_drag: top.is_some_and(|i| !self.nodes[i].drag_through),
+            over_ui: overlay.is_some() || top.is_some(),
+            blocks_drag: overlay.is_some() || top.is_some_and(|i| !self.nodes[i].drag_through),
             pointer: top.is_some_and(|i| active(i) && self.nodes[i].pointer),
         }
     }

@@ -121,7 +121,7 @@ impl App {
                 let grid = self.grid();
                 self.scroll_gallery(
                     grid,
-                    ScrollInput::Wheel(-rows.unwrap_or(1.0) * grid.row_h()),
+                    ui::ScrollInput::Wheel(-rows.unwrap_or(1.0) * grid.row_h()),
                 );
                 return;
             }

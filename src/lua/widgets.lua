@@ -920,7 +920,7 @@ local function overlay(id, panel, o)
   local horiz = { start = "left", center = "center", ["end"] = "right" }
   panel.anchor = vert[o.vertical or "center"] .. "-" .. horiz[o.horizontal or "center"]
   return {
-    id = id, show = "never", layer = "top",
+    id = id, show = "never", layer = "top", cursor = "default",
     width = "100%", height = "100%",
     background = o.scrim or "transparent",
     on_click = "ui hide " .. id,
@@ -992,8 +992,7 @@ function W.menu(o)
       panel[#panel + 1] = {
         width = "100%", padding = { 6, 10 }, radius = W.style.button_radius, gap = 12,
         hover = { background = W.style.hover },
-        -- Like native menus: arrow cursor, near-instant highlight.
-        cursor = o.cursor or "default",
+        cursor = o.cursor or "pointer",
         show = it.show,
         anim = o.anim or 0.06,
         on_click = function()

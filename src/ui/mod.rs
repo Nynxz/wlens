@@ -67,6 +67,25 @@ pub enum ScrollInput {
     Pixels(f64),
 }
 
+impl ScrollInput {
+    /// Physical pixels, positive towards the start of the list.
+    pub fn apply(self, shown: &mut f64, target: &mut f64, max: f64) {
+        match self {
+            ScrollInput::Wheel(dy) => {
+                // Reverse from the visible position, without finishing a queued wheel flick.
+                if (*target - *shown) * dy > 0.0 {
+                    *target = *shown;
+                }
+                *target = (*target - dy).clamp(0.0, max);
+            }
+            ScrollInput::Pixels(dy) => {
+                *shown = (*shown - dy).clamp(0.0, max);
+                *target = *shown;
+            }
+        }
+    }
+}
+
 /// Whether a top-level element keeps the image/grid out of its space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reserve {
@@ -355,7 +374,7 @@ pub struct Ui {
     squeeze: Vec<(usize, f32)>,
     /// Items an overflowing row hid this layout (by priority).
     squeeze_hide: Vec<usize>,
-    /// A menu / overlay is open (see `open_overlays`), refreshed by `animate`.
+    /// A menu / overlay is open (see `open_overlay`), refreshed by `animate`.
     menu_open: bool,
     /// The window, from the last layout (floating elements stay inside it).
     win: Rect,
