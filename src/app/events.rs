@@ -76,6 +76,13 @@ impl ApplicationHandler<UserEvent> for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self
+            .renderer
+            .as_mut()
+            .is_some_and(|r| r.finish_resize_if_due(Instant::now()))
+        {
+            self.redraw();
+        }
         // Fire due Lua timers (`wlens.after`); a timer may schedule another.
         let due = self.script.due_timers(Instant::now());
         if !due.is_empty() {
@@ -90,6 +97,7 @@ impl ApplicationHandler<UserEvent> for App {
             self.redraw();
         }
         let next = [
+            self.renderer.as_ref().and_then(Renderer::resize_deadline),
             self.frame_retry,
             self.idle_deadline(),
             self.script.next_timer(),
@@ -148,24 +156,21 @@ impl ApplicationHandler<UserEvent> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
-                if let Some(r) = &mut self.renderer {
-                    r.resize((size.width, size.height));
+                if self
+                    .renderer
+                    .as_mut()
+                    .is_some_and(|r| r.resize(size.into()))
+                {
+                    // Commit the new buffer with this configure. Waiting for a
+                    // frame callback can leave the old bar at the moving origin.
+                    self.render(true);
                 }
-                self.layout_ui();
-                self.refit_or_clamp();
-                if let Some(c) = &mut self.current {
-                    // Resizing shouldn't animate; the window is already moving.
-                    c.view = self.target;
-                }
-                if self.gallery.active {
-                    self.ensure_selection_visible();
-                    self.gallery.shown = self.gallery.scroll;
-                }
-                self.redraw();
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 self.scale = scale_factor as f32;
                 self.gallery.requested = None;
+                // The fit margin changes with scale even when the physical size is unchanged.
+                self.refit_or_clamp();
                 self.redraw();
             }
             // Back on screen (another workspace, screen on again): if frames
@@ -182,7 +187,7 @@ impl ApplicationHandler<UserEvent> for App {
                 self.press = None;
                 self.update_cursor();
             }
-            WindowEvent::RedrawRequested => self.render(),
+            WindowEvent::RedrawRequested => self.render(false),
             WindowEvent::ModifiersChanged(m) => {
                 if self.mods != m.state() {
                     self.scroll_accum = 0.0;

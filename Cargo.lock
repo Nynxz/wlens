@@ -3953,6 +3953,7 @@ dependencies = [
  "serde_json",
  "ureq",
  "url",
+ "wayland-client",
  "wgpu",
  "winit",
 ]

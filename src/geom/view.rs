@@ -103,25 +103,32 @@ impl View {
         self.clamp(img, vp);
     }
 
+    fn begin_manual(&mut self, vp: Rect) {
+        if self.fitted {
+            let (cx, cy) = vp.center();
+            // Preserve the current image position when switching to the rounded midpoint.
+            self.offset.0 += cx - cx.round();
+            self.offset.1 += cy - cy.round();
+            self.fitted = false;
+        }
+    }
+
     /// Zoom to `new` keeping the image point under `anchor` (screen px) fixed.
     pub fn zoom_at(&mut self, new: f64, anchor: (f64, f64), img: (u32, u32), vp: Rect) {
         let new = new.clamp(MIN_ZOOM, MAX_ZOOM);
         let ratio = new / self.zoom;
-        let c = vp.center();
-        let rel = (anchor.0 - c.0, anchor.1 - c.1);
-        self.offset = (
-            rel.0 - (rel.0 - self.offset.0) * ratio,
-            rel.1 - (rel.1 - self.offset.1) * ratio,
-        );
+        self.begin_manual(vp);
+        let (cx, cy) = self.render_center(vp);
+        self.offset.0 += (1.0 - ratio) * (anchor.0 - cx);
+        self.offset.1 += (1.0 - ratio) * (anchor.1 - cy);
         self.zoom = new;
-        self.fitted = false;
         self.clamp(img, vp);
     }
 
     pub fn pan(&mut self, dx: f64, dy: f64, img: (u32, u32), vp: Rect) {
+        self.begin_manual(vp);
         self.offset.0 += dx;
         self.offset.1 += dy;
-        self.fitted = false;
         self.clamp(img, vp);
     }
 
@@ -130,24 +137,30 @@ impl View {
         if vp.w <= 0.0 || vp.h <= 0.0 {
             return;
         }
+        let previous = *self;
+        if self.fitted {
+            self.begin_manual(vp);
+            self.clamp(img, vp);
+        }
         let before = self.offset;
         let (w, h) = self.rotated_size(img);
         let (cx, cy) = vp.center();
-        let axis = |from_center: f64, span: f64, size: f64| {
+        let axis = |point: f64, center: f64, span: f64, size: f64| {
             if size > span {
-                (-from_center / (0.8 * span)).clamp(-0.5, 0.5) * (size - span)
+                let travel = ((center - point) / (0.8 * span)).clamp(-0.5, 0.5) * (size - span);
+                travel + (center - center.round())
             } else {
                 // Position the image centre at the pointer, within the configured pan limits.
-                from_center
+                point - center.round()
             }
         };
         self.offset = (
-            axis(point.0 - cx, vp.w, w * self.zoom),
-            axis(point.1 - cy, vp.h, h * self.zoom),
+            axis(point.0, cx, vp.w, w * self.zoom),
+            axis(point.1, cy, vp.h, h * self.zoom),
         );
         self.clamp(img, vp);
-        if self.offset != before {
-            self.fitted = false;
+        if self.offset == before {
+            *self = previous;
         }
     }
 
@@ -157,45 +170,59 @@ impl View {
     pub fn clamp(&mut self, img: (u32, u32), vp: Rect) {
         let (iw, ih) = self.rotated_size(img);
         let mode = self.pan;
-        let axis = |off: f64, size: f64, win: f64| {
+        let (cx, cy) = vp.center();
+        let axis = |off: f64, size: f64, win: f64, center: f64| {
             let slack = (size - win) / 2.0;
             let limit = match mode {
-                _ if slack > 0.0 => slack,
-                PanMode::Center => 0.0,
+                _ if slack >= 0.0 => slack,
+                PanMode::Center => return 0.0,
                 // smaller image: may move until it touches the viewport edge
                 PanMode::Bounded => -slack,
                 // keep at least a sliver (48px, or the whole image if tinier) visible
                 PanMode::Free => (win + size) / 2.0 - size.min(48.0),
             };
-            off.clamp(-limit, limit)
+            // Bounds use the true edges of the viewport.
+            let bias = if self.fitted {
+                0.0
+            } else {
+                center.round() - center
+            };
+            (off + bias).clamp(-limit, limit) - bias
         };
-        self.offset.0 = axis(self.offset.0, iw * self.zoom, vp.w);
-        self.offset.1 = axis(self.offset.1, ih * self.zoom, vp.h);
+        self.offset.0 = axis(self.offset.0, iw * self.zoom, vp.w, cx);
+        self.offset.1 = axis(self.offset.1, ih * self.zoom, vp.h, cy);
     }
 
     pub fn rotate(&mut self, quarter_turns: i32) {
         self.quarter_turns = (self.quarter_turns as i32 + quarter_turns).rem_euclid(4) as u8;
     }
 
+    /// At fixed zoom, resizing by one pixel moves the viewport midpoint by
+    /// half a pixel. Round just that midpoint for drawing so fine details
+    /// keep the same texture samples. Pan and zoom retain their precision.
+    fn render_center(&self, vp: Rect) -> (f64, f64) {
+        let (cx, cy) = vp.center();
+        let (cx, cy) = if self.fitted {
+            (cx, cy)
+        } else {
+            (cx.round(), cy.round())
+        };
+        (cx + self.offset.0, cy + self.offset.1)
+    }
+
     /// Where the (rotated) image lands on screen.
     pub fn screen_rect(&self, img: (u32, u32), vp: Rect) -> Rect {
         let (iw, ih) = self.rotated_size(img);
         let (w, h) = (iw * self.zoom, ih * self.zoom);
-        let c = vp.center();
-        Rect::new(
-            c.0 + self.offset.0 - w / 2.0,
-            c.1 + self.offset.1 - h / 2.0,
-            w,
-            h,
-        )
+        let (cx, cy) = self.render_center(vp);
+        Rect::new(cx - w / 2.0, cy - h / 2.0, w, h)
     }
 
     /// Affine map from screen pixel position to image UV (0..1), as two rows
     /// of a 2x3 matrix: `uv = row · (x, y, 1)`. The shader does the rest.
     pub fn screen_to_uv(&self, img: (u32, u32), vp: Rect) -> [[f32; 3]; 2] {
         let (w, h) = (img.0 as f64, img.1 as f64);
-        let vc = vp.center();
-        let (cx, cy) = (vc.0 + self.offset.0, vc.1 + self.offset.1);
+        let (cx, cy) = self.render_center(vp);
         let s = 1.0 / self.zoom;
 
         // Inverse rotation (y-down coords, so this undoes a clockwise turn).
@@ -281,13 +308,58 @@ mod tests {
     }
 
     #[test]
+    fn resizing_at_fixed_zoom_preserves_texture_samples() {
+        let view = View {
+            zoom: 0.2,
+            offset: (3.25, -1.75),
+            fitted: false,
+            ..View::default()
+        };
+        let img = (333, 187);
+        let before = vp(400.0, 200.0);
+        let after = vp(401.0, 201.0);
+        let rect = view.screen_rect(img, before);
+        let resized = view.screen_rect(img, after);
+        assert_eq!((resized.w, resized.h), (rect.w, rect.h));
+        assert!(close((resized.x - rect.x, resized.y - rect.y), (1.0, 1.0)));
+        assert!(close(
+            uv(view.screen_to_uv(img, before), 200.5, 100.5),
+            uv(view.screen_to_uv(img, after), 201.5, 101.5),
+        ));
+        assert_eq!(
+            View::default().screen_rect(img, after).center(),
+            after.center()
+        );
+    }
+
+    #[test]
     fn zoom_keeps_anchor() {
         let mut v = View::default();
-        let (img, area) = ((1000, 1000), vp(200.0, 200.0));
+        let (img, area) = ((1000, 1000), vp(201.0, 203.0));
         let before = uv(v.screen_to_uv(img, area), 150.0, 60.0);
         v.zoom_at(2.0, (150.0, 60.0), img, area);
         let after = uv(v.screen_to_uv(img, area), 150.0, 60.0);
         assert!(close(before, after));
+    }
+
+    #[test]
+    fn manual_pan_stops_at_exact_edges_of_an_odd_viewport() {
+        let mut view = View::default();
+        let area = vp(201.0, 203.0);
+        let img = (400, 500);
+        view.pan_to_pointer(area.center(), img, area);
+        assert!(view.fitted);
+        view.pan(1000.0, 1000.0, img, area);
+        let rect = view.screen_rect(img, area);
+        assert_eq!((rect.x, rect.y), (0.0, 0.0));
+        view.pan(-2000.0, -2000.0, img, area);
+        let rect = view.screen_rect(img, area);
+        assert_eq!((rect.x + rect.w, rect.y + rect.h), (area.w, area.h));
+
+        view.pan = PanMode::Center;
+        view.fit(FitMode::Shrink, (100, 100), area, 0.0);
+        view.pan_to_pointer((181.0, 81.0), (100, 100), area);
+        assert!(view.fitted);
     }
 
     #[test]

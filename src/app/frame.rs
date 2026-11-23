@@ -1,6 +1,7 @@
 //! Per-frame work: advancing animations and assembling what the renderer draws.
 
 use super::*;
+use crate::model::settings::FitMode;
 
 impl App {
     /// Advance animations by `dt`. Returns true while anything is moving.
@@ -159,12 +160,23 @@ impl App {
             ui_start,
             ui_texts,
             scene_clip: self.scene_clip,
+            image_fit: (!self.gallery.active && self.current.is_some()).then_some(
+                if self.target.fitted {
+                    s.fit
+                } else {
+                    FitMode::None
+                },
+            ),
+            bottom_anchored: self.renderer.as_ref().is_some_and(|r| {
+                let height = f64::from(r.size().1);
+                height - (vp.y + vp.h) > vp.y + 0.5
+            }),
             top_start,
             top_texts,
         }
     }
 
-    pub(super) fn render(&mut self) {
+    pub(super) fn render(&mut self, resized: bool) {
         let now = Instant::now();
         // After idling, the first frame shouldn't jump animations forward.
         let dt = if self.animating {
@@ -179,7 +191,28 @@ impl App {
         // Lay out after animating, so an element that just finished fading
         // out collapses (and frees its space) on this frame, not never.
         self.animating = self.step(dt) || dt == 0.0 && self.needs_motion();
+        let old_grid = (resized && self.gallery.active).then(|| self.grid());
         self.layout_ui();
+        if resized {
+            // layout_ui has refitted the target to the new viewport. Present the
+            // image and controls at the same geometry on the first resized frame.
+            if let Some(layer) = &mut self.current {
+                layer.view = self.target;
+            }
+            if let Some(old) = old_grid {
+                let new = self.grid();
+                let max = new.max_scroll(self.grid_len(&new));
+                let gallery = &mut self.gallery;
+                let shown = old.reflow_scroll(
+                    &new,
+                    self.items.len(),
+                    gallery.shown,
+                    &mut gallery.reflow_anchor,
+                );
+                gallery.scroll = (shown + (gallery.scroll - gallery.shown)).clamp(0.0, max);
+                gallery.shown = shown.clamp(0.0, max);
+            }
+        }
         self.request_thumbs();
         self.request_ui_images();
         let frame = self.build_frame();

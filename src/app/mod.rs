@@ -178,6 +178,8 @@ struct Gallery {
     shown: f64,
     /// Tile held under a stationary wheel gesture as columns reflow.
     resize_anchor: Option<((f64, f64), usize)>,
+    /// Tile in the first visible row during window reflow.
+    reflow_anchor: Option<usize>,
     thumbs: HashMap<Source, ThumbTex>,
     pending: HashSet<(Source, u32)>,
     failed: HashSet<Source>,

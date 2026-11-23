@@ -1,4 +1,4 @@
-// Downsample one mip level into the next with a bilinear tap.
+// Fullscreen passes for mip generation and native-pixel presentation.
 
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var samp: sampler;
@@ -20,4 +20,14 @@ fn vs_main(@builtin(vertex_index) i: u32) -> VsOut {
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     return textureSample(src, samp, in.uv);
+}
+
+@group(1) @binding(0) var<uniform> screen: vec4<f32>;
+
+// Copy exactly one texel per output pixel, starting at the bottom row of
+// the rendered viewport. The intermediate texture may have spare capacity.
+@fragment
+fn fs_bottom_up(in: VsOut) -> @location(0) vec4<f32> {
+    let pixel = vec2<i32>(in.pos.xy);
+    return textureLoad(src, vec2<i32>(pixel.x, i32(screen.y) - 1 - pixel.y), 0);
 }
